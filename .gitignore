@@ -1,2 +1,7 @@
+.bloop/
+.bsp/
+.metals/
+.scalafmt.conf
+target/
 *.class
 *.log
