@@ -89,6 +89,8 @@ final case class House private (
   // Schedule
 
   def setSchedule(id: UUID) = copy(scheduleId = id)
+
+  def delete = HouseEvent.HouseDeleted(id)
 }
 
 object House:

@@ -31,6 +31,8 @@ final case class Contact private (
       Contact.phone.set(phone.some)(contact),
       ContactEvent.PhoneChanged(ci, phone)
     )
+
+  def delete = ContactEvent.ContactDeleted(ci)
 }
 
 object Contact:

@@ -11,3 +11,4 @@ enum ContactEvent:
   case NameChanged(ci: Int, name: String)
   case LastnameChanged(ci: Int, lastname: String)
   case PhoneChanged(ci: Int, phone: String)
+  case ContactDeleted(ci: Int)

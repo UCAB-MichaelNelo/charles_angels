@@ -26,7 +26,7 @@ final case class Schedule private (
       day: Lens[Schedule, DaySchedule],
       dayInt: Int,
       block: ScheduleBlock
-  ) = day
+  ): ValidatedNec[ScheduleError, (Schedule, ScheduleEvent)] = day
     .andThen(Schedule.lastBlock)
     .set(block)
     .andThen(s =>
@@ -280,6 +280,8 @@ final case class Schedule private (
       durationMinutes,
       key
     )
+
+  def delete = ScheduleEvent.ScheduleDeleted(id)
 }
 
 object Schedule:

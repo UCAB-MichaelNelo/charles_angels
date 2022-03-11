@@ -13,12 +13,12 @@ import org.charles.angels.houses.application.errors.ApplicationError
 
 enum QueryAction[A]:
   case GetHouse(id: UUID) extends QueryAction[Option[House]]
-  case GetContact(id: UUID) extends QueryAction[Option[Contact]]
+  case GetContact(ci: Int) extends QueryAction[Option[Contact]]
   case GetSchedule(id: UUID) extends QueryAction[Option[Schedule]]
 
 trait QueryAlgebra[F[_]]:
   def getHouse(id: UUID): Language[F, House]
-  def getContact(id: UUID): Language[F, Contact]
+  def getContact(ci: Int): Language[F, Contact]
   def getSchedule(id: UUID): Language[F, Schedule]
 
 class QueryLanguage[F[_]](using InjectK[QueryAction, F])
@@ -28,7 +28,7 @@ class QueryLanguage[F[_]](using InjectK[QueryAction, F])
       .liftInject(QueryAction.GetHouse(id))
       .map(_.toRight(ApplicationError.HouseNotFoundError(id).pure))
   )
-  def getContact(id: UUID) = EitherT(
+  def getContact(id: Int) = EitherT(
     Free
       .liftInject(QueryAction.GetContact(id))
       .map(_.toRight(ApplicationError.ContactNotFoundError(id).pure))

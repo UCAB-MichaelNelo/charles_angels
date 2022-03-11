@@ -45,3 +45,4 @@ enum ScheduleEvent:
       blockKey: Int,
       newDurationMinutes: Int
   )
+  case ScheduleDeleted(id: UUID)

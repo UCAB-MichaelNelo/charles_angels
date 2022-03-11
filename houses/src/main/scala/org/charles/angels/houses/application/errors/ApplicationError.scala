@@ -10,5 +10,5 @@ enum ApplicationError:
   case ContactDomainError(error: ContactError)
   case ScheduleDomainError(error: ScheduleError)
   case HouseNotFoundError(id: UUID)
-  case ContactNotFoundError(id: UUID)
+  case ContactNotFoundError(id: Int)
   case ScheduleNotFoundError(id: UUID)

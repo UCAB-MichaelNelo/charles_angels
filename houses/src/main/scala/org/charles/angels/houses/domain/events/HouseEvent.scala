@@ -32,3 +32,4 @@ enum HouseEvent:
   case MaximumAgeUpdateed(id: UUID, newMaximumAge: Int)
   case CurrentGirlsHelpedUpdated(id: UUID, newCurrentGirlsHelped: Int)
   case CurrentBoysHelpedUpdated(id: UUID, newCurrentBoysHelped: Int)
+  case HouseDeleted(id: UUID)
