@@ -17,6 +17,7 @@ enum ScheduleEvent:
   case BlockAdded(
       id: UUID,
       day: Int,
+      key: Long,
       startTime: LocalTime,
       duration: FiniteDuration
   )

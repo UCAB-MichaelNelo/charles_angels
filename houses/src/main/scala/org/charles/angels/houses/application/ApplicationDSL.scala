@@ -19,10 +19,10 @@ import org.charles.angels.houses.domain.ScheduleBlock
 import org.charles.angels.houses.domain.events.ScheduleEvent
 
 object ApplicationDSL:
-  val STDL = StandardLanguage[ApplicationAction]
-  val DEL = DomainEventLanguage[ApplicationAction]
-  val QL = QueryLanguage[ApplicationAction]
-  val SVCL = ServiceLanguage[ApplicationAction]
+  private val STDL = StandardLanguage[ApplicationAction]
+  private val DEL = DomainEventLanguage[ApplicationAction]
+  private val QL = QueryLanguage[ApplicationAction]
+  private val SVCL = ServiceLanguage[ApplicationAction]
 
   import STDL.*, DEL.*, QL.*, SVCL.*
 
@@ -53,6 +53,8 @@ object ApplicationDSL:
   yield nschedule
 
   // Use cases relative to House Entity
+
+  def findHouse(id: UUID) = getHouse(id)
 
   def createHouse(house: HouseModel) = for
     (contact, contactCreated) <- of(
@@ -107,7 +109,7 @@ object ApplicationDSL:
     house =>
       for
         img <- alloc(contents, house.name)
-        vimg <- of(House.Image(img))
+        vimg <- of(House.Image(img)).onError { _ => dealloc(img) }
       yield house.setImage(vimg)
   }
 
@@ -167,6 +169,8 @@ object ApplicationDSL:
 
   // Use cases relative to Contact
 
+  def findContact(ci: Int) = getContact(ci)
+
   def setCIOfContact(ci: Int, newCI: Int) = withContact(ci) { contact =>
     for vnewCI <- of(Contact.CI(newCI))
     yield contact.setCI(vnewCI)
@@ -183,7 +187,7 @@ object ApplicationDSL:
       yield contact.setLastname(vlname)
   }
 
-  def setPhone(ci: Int, phone: String) = withContact(ci) { contact =>
+  def setPhoneOfContact(ci: Int, phone: String) = withContact(ci) { contact =>
     for vphone <- of(Contact.Phone(phone))
     yield contact.setPhone(vphone)
   }
@@ -192,7 +196,10 @@ object ApplicationDSL:
     contact <- getContact(ci)
     () <- notifyContactEvent(contact.delete)
   yield ()
+
   // Use cases relative to Schedule
+
+  def findSchedule(id: UUID) = getSchedule(id)
 
   private def addBlock(
       id: UUID,
@@ -397,7 +404,7 @@ object ApplicationDSL:
     withSchedule(id) { schedule =>
       for
         vhour <- of(ScheduleBlock.Minute(durationMinutes))
-        t <- of(schedule.setDurationHoursOnMonday(key, durationMinutes))
+        t <- of(schedule.setDurationMinutesOnMonday(key, durationMinutes))
       yield t
     }
 
@@ -405,7 +412,7 @@ object ApplicationDSL:
     withSchedule(id) { schedule =>
       for
         vhour <- of(ScheduleBlock.Minute(durationMinutes))
-        t <- of(schedule.setDurationHoursOnTuesday(key, durationMinutes))
+        t <- of(schedule.setDurationMinutesOnTuesday(key, durationMinutes))
       yield t
     }
 
@@ -413,7 +420,7 @@ object ApplicationDSL:
     withSchedule(id) { schedule =>
       for
         vhour <- of(ScheduleBlock.Minute(durationMinutes))
-        t <- of(schedule.setDurationHoursOnWednesday(key, durationMinutes))
+        t <- of(schedule.setDurationMinutesOnWednesday(key, durationMinutes))
       yield t
     }
 
@@ -421,7 +428,7 @@ object ApplicationDSL:
     withSchedule(id) { schedule =>
       for
         vhour <- of(ScheduleBlock.Minute(durationMinutes))
-        t <- of(schedule.setDurationHoursOnThursday(key, durationMinutes))
+        t <- of(schedule.setDurationMinutesOnThursday(key, durationMinutes))
       yield t
     }
 
@@ -429,7 +436,7 @@ object ApplicationDSL:
     withSchedule(id) { schedule =>
       for
         vhour <- of(ScheduleBlock.Minute(durationMinutes))
-        t <- of(schedule.setDurationHoursOnFriday(key, durationMinutes))
+        t <- of(schedule.setDurationMinutesOnFriday(key, durationMinutes))
       yield t
     }
 

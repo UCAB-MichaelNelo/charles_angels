@@ -13,6 +13,10 @@ import monocle.Lens
 import monocle.Optional
 import monocle.macros.GenLens
 import java.util.UUID
+import cats.kernel.Order
+
+private given Order[LocalTime] with
+  def compare(l1: LocalTime, l2: LocalTime) = l1.compareTo(l2)
 
 final case class Schedule private (
     id: UUID,
@@ -31,7 +35,15 @@ final case class Schedule private (
     .set(block)
     .andThen(s =>
       ScheduleBlock(day.get(s)) *> s.validNec.product(
-        ScheduleEvent.BlockAdded(id, dayInt, block.starts, block.lasts).validNec
+        ScheduleEvent
+          .BlockAdded(
+            id,
+            dayInt,
+            day.get(s).size - 1,
+            block.starts,
+            block.lasts
+          )
+          .validNec
       )
     )
     .apply(schedule)
@@ -94,7 +106,13 @@ final case class Schedule private (
         .set(value)
         .andThen(ScheduleBlock.validateBlock)
     )
-    .map(focusDay.andThen(Schedule.blockOn(blockIndex)).set(_)(schedule))
+    .andThen(
+      focusDay
+        .andThen(Schedule.blockOn(blockIndex))
+        .set(_)
+        .andThen(s => ScheduleBlock(focusDay.get(s)) *> s.validNec)
+        .apply(schedule)
+    )
     .product(evt.validNec)
 
   def setStartingHourOnMonday(key: Int, startingHour: Int) =
@@ -239,7 +257,7 @@ final case class Schedule private (
     updateBlock(
       Schedule.monday,
       ScheduleBlock.durationMinutes,
-      ScheduleEvent.DurationHoursUpdatedOnBlock(id, 1, key, durationMinutes),
+      ScheduleEvent.DurationMinutesUpdatedOnBlock(id, 1, key, durationMinutes),
       1,
       durationMinutes,
       key
@@ -248,7 +266,7 @@ final case class Schedule private (
     updateBlock(
       Schedule.tuesday,
       ScheduleBlock.durationMinutes,
-      ScheduleEvent.DurationHoursUpdatedOnBlock(id, 2, key, durationMinutes),
+      ScheduleEvent.DurationMinutesUpdatedOnBlock(id, 2, key, durationMinutes),
       2,
       durationMinutes,
       key
@@ -257,7 +275,7 @@ final case class Schedule private (
     updateBlock(
       Schedule.wednesday,
       ScheduleBlock.durationMinutes,
-      ScheduleEvent.DurationHoursUpdatedOnBlock(id, 3, key, durationMinutes),
+      ScheduleEvent.DurationMinutesUpdatedOnBlock(id, 3, key, durationMinutes),
       3,
       durationMinutes,
       key
@@ -266,7 +284,7 @@ final case class Schedule private (
     updateBlock(
       Schedule.thursday,
       ScheduleBlock.durationMinutes,
-      ScheduleEvent.DurationHoursUpdatedOnBlock(id, 4, key, durationMinutes),
+      ScheduleEvent.DurationMinutesUpdatedOnBlock(id, 4, key, durationMinutes),
       4,
       durationMinutes,
       key
@@ -275,7 +293,7 @@ final case class Schedule private (
     updateBlock(
       Schedule.friday,
       ScheduleBlock.durationMinutes,
-      ScheduleEvent.DurationHoursUpdatedOnBlock(id, 5, key, durationMinutes),
+      ScheduleEvent.DurationMinutesUpdatedOnBlock(id, 5, key, durationMinutes),
       5,
       durationMinutes,
       key
@@ -305,6 +323,15 @@ object Schedule:
         if (i == index) Chain(b) else Chain(b1)
       }
     }
+
+  def unsafe(
+      id: UUID,
+      monday: DaySchedule,
+      tuesday: DaySchedule,
+      wednesday: DaySchedule,
+      thursday: DaySchedule,
+      friday: DaySchedule
+  ) = new Schedule(id, monday, tuesday, wednesday, thursday, friday)
 
   def apply(
       monday: RawDaySchedule,

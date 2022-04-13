@@ -49,7 +49,12 @@ final case class House private (
       HouseEvent.PhoneRemoved(id, key)
     )
   def updatePhone(key: Int, phone: String) = (
-    copy(phones = phones.updated(key, phone).distinct),
+    copy(phones =
+      phones
+        .get(key)
+        .map(_ => phones.updated(key, phone).distinct)
+        .fold(phones)(identity)
+    ),
     HouseEvent.PhoneUpdated(id, key, phone)
   )
   def setMaxShares(newMaxShares: Int) = (
@@ -128,7 +133,7 @@ object House:
          else HouseError.InvalidPhone(phone).invalidNec[String])
 
     def apply(phones: Vector[String]) =
-      (if (!phones.isEmpty) HouseError.NoPhonesProvided.invalidNec
+      (if (phones.isEmpty) HouseError.NoPhonesProvided.invalidNec
        else phones.validNec) *>
         phones.mapWithIndex(validatePhone).sequence *>
         phones.validNec
@@ -216,4 +221,36 @@ object House:
         h.scheduleId
       )
     )
+  )
+
+  def unsafe(
+      id: UUID,
+      img: File,
+      name: String,
+      rif: Int,
+      phones: Vector[String],
+      address: String,
+      contactCI: Int,
+      scheduleId: UUID,
+      maxShares: Int,
+      currentShares: Int,
+      minimumAge: Int,
+      maximumAge: Int,
+      currentGirlsHelped: Int,
+      currentBoysHelped: Int
+  ) = new House(
+    id,
+    img,
+    name,
+    rif,
+    phones.distinct,
+    address,
+    maxShares,
+    currentShares,
+    minimumAge,
+    maximumAge,
+    currentGirlsHelped,
+    currentBoysHelped,
+    contactCI,
+    scheduleId
   )

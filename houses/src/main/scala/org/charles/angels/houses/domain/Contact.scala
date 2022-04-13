@@ -51,7 +51,7 @@ object Contact:
     def apply(name: String) =
       (if (!name.isBlank) name.validNec
        else ContactError.EmptyName.invalidNec) *>
-        (if (name.length > MAX_SIZE) name.validNec
+        (if (name.length <= MAX_SIZE) name.validNec
          else ContactError.NameTooLong.invalidNec)
 
   object Lastname:
@@ -59,7 +59,7 @@ object Contact:
     def apply(lastname: String) =
       (if (!lastname.isBlank) lastname.validNec
        else ContactError.EmptyLastname.invalidNec) *>
-        (if (lastname.length > MAX_SIZE) lastname.validNec
+        (if (lastname.length <= MAX_SIZE) lastname.validNec
          else ContactError.LastnameTooLong.invalidNec)
 
   object Phone:

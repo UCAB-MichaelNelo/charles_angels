@@ -1,6 +1,7 @@
 package org.charles.angels.houses.domain.errors
 
 import java.io.File
+import cats.Show
 
 enum HouseError:
   case EmptyImage extends HouseError

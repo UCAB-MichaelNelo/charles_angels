@@ -5,21 +5,55 @@ import java.io.File
 import cats.InjectK
 import cats.data.EitherT
 import cats.free.Free
+import fs2.Stream
+import cats.effect.kernel.Async
 
 enum FilesystemAction[A]:
   case CreateFile(contents: Array[Byte], name: String)
       extends FilesystemAction[Either[Throwable, File]]
   case DeleteFile(file: File) extends FilesystemAction[Either[Throwable, Unit]]
+  case GetFileContents(path: String) extends FilesystemAction[GetStream]
+  case CreateFileWithStreamedContents(name: String)
+      extends FilesystemAction[WriteStream]
 
-trait FilesystemOperation[F[_]]:
-  def createFile(contents: Array[Byte], name: String): CompilerLanguage[F, File]
-  def deleteFile(file: File): CompilerLanguage[F, Unit]
+trait FilesystemLanguage[F[_]](using InjectK[FilesystemAction[_], F]) {
+  def createFile(
+      contents: Array[Byte],
+      name: String
+  ): CompilerLanguage[F, File] = EitherT(
+    Free
+      .liftInject[F]
+      .apply[FilesystemAction[_], Either[Throwable, File]](
+        FilesystemAction.CreateFile(contents, name)
+      )
+  )
+  def deleteFile(file: File): CompilerLanguage[F, Unit] = EitherT(
+    Free
+      .liftInject[F]
+      .apply[FilesystemAction[_], Either[Throwable, Unit]](
+        FilesystemAction.DeleteFile(file)
+      )
+  )
+  def getFileContents(
+      file: File
+  ): CompilerLanguage[F, GetStream] = EitherT.right(
+    Free
+      .liftInject(
+        FilesystemAction.GetFileContents(file.getAbsolutePath)
+      )
+  )
+  def createFile(name: String): CompilerLanguage[F, WriteStream] =
+    EitherT.right(
+      Free.liftInject(
+        FilesystemAction.CreateFileWithStreamedContents(name)
+      )
+    )
+}
 
-class FilesystemLanguage[F[_]](using InjectK[FilesystemAction, F])
-    extends FilesystemOperation[F]:
-  def createFile(contents: Array[Byte], name: String) = EitherT(
-    Free.liftInject(FilesystemAction.CreateFile(contents, name))
-  )
-  def deleteFile(file: File) = EitherT(
-    Free.liftInject(FilesystemAction.DeleteFile(file))
-  )
+trait GetStream {
+  def apply[F[_]: Async]: Stream[F, Byte]
+}
+
+trait WriteStream {
+  def apply[F[_]: Async](stream: Stream[F, Byte]): F[File]
+}

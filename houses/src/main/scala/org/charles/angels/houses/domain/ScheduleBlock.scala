@@ -23,11 +23,11 @@ final case class ScheduleBlock private[domain] (
     starts: LocalTime,
     lasts: FiniteDuration
 ) {
-  private def has(time: LocalTime) =
-    time.isAfter(starts) && time.isBefore(ends)
   def ends = starts.plus(lasts.length, lasts.unit.toChronoUnit)
   def intersectsWith(block: ScheduleBlock) =
     has(block.starts) || block.has(starts)
+  private def has(time: LocalTime) =
+    (time == starts) || (time == ends) || ((time isAfter starts) && (time isBefore ends))
 }
 
 type DaySchedule = Chain[ScheduleBlock]
@@ -78,14 +78,20 @@ object ScheduleBlock:
   else
     record.validNec
 
-  def apply(day: Chain[ScheduleBlock]) = (
-    for
-      b1 <- day
-      b2 <- day
-    yield
-      if (b1.intersectsWith(b2)) ().validNec
-      else ScheduleError.IntersectingBlocks(b1, b2).invalidNec
-  ).sequence *> day.validNec
+  def apply(day: Chain[ScheduleBlock]) =
+    (
+      for
+        (b1, i1) <- day.zipWithIndex
+        (b2, i2) <- day.zipWithIndex
+      yield
+        if (i1 == i2) ().validNec
+        else if (b1 intersectsWith b2)
+          ScheduleError.IntersectingBlocks(b1, b2).invalidNec
+        else ().validNec
+    ).sequence *> day.validNec
+
+  def unsafe(startTime: LocalTime, duration: FiniteDuration) =
+    new ScheduleBlock(startTime, duration)
 
   def apply(rawSchedule: RawScheduleBlock) = {
     val duration = (

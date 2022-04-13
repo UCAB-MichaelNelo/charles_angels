@@ -2,26 +2,46 @@ package org.charles.angels.houses.compiler
 
 import cats.syntax.all.*
 import org.charles.angels.houses.logging.LoggingLanguage
+import org.charles.angels.houses.db.DatabaseAction
 import org.charles.angels.houses.db.DatabaseLanguage
+import org.charles.angels.houses.compiler.ServerAction
 import org.charles.angels.houses.filesystem.FilesystemLanguage
 import java.util.UUID
 import java.io.File
 import java.time.LocalTime
 import scala.concurrent.duration.FiniteDuration
+import org.charles.angels.houses.domain.ScheduleBlock
+import cats.data.Chain
+import org.charles.angels.people.domain.ChildInformation
+import org.charles.angels.people.domain.Wear
+import org.charles.angels.people.domain.PersonalInformation
+import org.charles.angels.houses.db.ChildModel
+import org.charles.angels.houses.cron.CronLanguage
+import org.charles.angels.houses.notifications.NotificationLanguage
+import org.charles.angels.houses.notifications.NotificationAction
+import org.charles.angels.houses.notifications.Notification
+import cats.data.OptionT
 
-object CompilerDSL:
-  private val LOG = LoggingLanguage[ServerAction]
-  private val DB = DatabaseLanguage[ServerAction]
-  private val FS = FilesystemLanguage[ServerAction]
-
-  import LOG.*, DB.*, FS.*
-
+object CompilerDSL
+    extends FilesystemLanguage[ServerAction]
+    with LoggingLanguage[ServerAction]
+    with DatabaseLanguage[ServerAction]
+    with CronLanguage[ServerAction]
+    with NotificationLanguage[ServerAction] {
+  // Services related DSL
+  def allocateFile(contents: Array[Byte], name: String) = info(
+    f"Construyendo archivo temporal de imagen de CASA $name"
+  ) >> createFile(contents, name)
+  def deallocateFile(file: File) = warn(
+    f"Destruyendo archivo temporal de nombre ${file.getAbsolutePath}"
+  ) >> deleteFile(file)
   // House related DSL
   def findHouse(id: UUID) = for
     findResult <- debug(f"Buscando entidad de CASA por ID: $id") >> getHouse(id)
-    () <- findResult match
+    () <- findResult match {
       case Some(house) => debug(f"Encontrado CASA con nombre: ${house.name}")
       case None        => warn(f"No se encontro CASA con ID: $id")
+    }
   yield findResult
   def registerHouse(
       id: UUID,
@@ -100,7 +120,8 @@ object CompilerDSL:
       f"Actualizando Cantidad Actual de Chicos Ayudados de CASA con ID: $id, Cantidad Actual de Chicos Ayudados: $currentBoysHelped"
     ) >> updateCurrentBoysHelped(id, currentBoysHelped)
   def eliminateHouse(id: UUID) =
-    debug(f"Eliminando CASA con ID: $id") >> deleteHouse(id)
+    debug(f"Eliminando CASA con ID: $id") >> removeHouse(id)
+  // Contact related DSL
   def findContact(ci: Int) = for
     findResult <- debug(f"Buscando CONTACTO con Cedula: $ci") >> getContact(ci)
     _ <- findResult match
@@ -131,21 +152,37 @@ object CompilerDSL:
   ) >> changePhone(ci, phone)
   def eliminateContact(ci: Int) =
     debug(f"Eliminando CONTACTO con CI: $ci") >> deleteContact(ci)
-
+  // Schedule related DSL
   def findSchedule(id: UUID) = for
     result <- debug(f"Buscando HORARIO con ID: $id") >> getSchedule(id)
     _ <- result match
-      case Some(_) => debug(f"Encontrado HORARIO con ID: $id")
+      case Some(s) => debug(f"Encontrado HORARIO con ID: $id, $s")
       case None    => warn(f"No se pudo encontrar HORARIO con ID $id")
   yield result
+  def registerSchedule(
+      id: UUID,
+      monday: Chain[ScheduleBlock],
+      tuesday: Chain[ScheduleBlock],
+      wednesday: Chain[ScheduleBlock],
+      thursday: Chain[ScheduleBlock],
+      friday: Chain[ScheduleBlock]
+  ) = debug(f"Registrando HORARIO con ID: $id") >> storeSchedule(
+    id,
+    monday,
+    tuesday,
+    wednesday,
+    thursday,
+    friday
+  )
   def addBlockToSchedule(
       id: UUID,
       day: Int,
+      key: Long,
       startTime: LocalTime,
       duration: FiniteDuration
   ) = debug(
     f"Agregando Bloque de Horario a HORARIO con ID: $id, en el $day dia, a la hora: $startTime, duracion: $duration"
-  ) >> addBlock(id, day, startTime, duration)
+  ) >> addBlock(id, day, key, startTime, duration)
   def removeBlockOfSchedule(
       id: UUID,
       day: Int,
@@ -185,3 +222,95 @@ object CompilerDSL:
   ) = debug(
     f"Actualizando Minutos de Duracion de Bloque de Horario de HORARIO con ID: $id, en el $day dia, con indice $key. Minutos de Duracion: $newDurationMinutes"
   ) >> updateDurationMinutesOnBlock(id, day, key, newDurationMinutes)
+  def eliminateSchedule(id: UUID) =
+    debug(f"Eliminando HORARIO con ID: $id") >> deleteSchedule(id)
+
+  // People related DSL
+  private def sexChar(wear: Wear) = wear match {
+    case Wear.BoyWear(_)  => "O"
+    case Wear.GirlWear(_) => "A"
+  }
+  private def string(info: PersonalInformation) =
+    f"""CI: ${info.ci}, NOMBRE: ${info.name},
+        LASTNAME: ${info.lastname},
+        EDAD: ${info.age}
+    """
+  def saveChild(model: ChildModel) =
+    val char = sexChar(model.wear)
+    val info = model.information
+    def unwrapInformation(
+        option: Option[PersonalInformation],
+        ifMissing: String
+    ) = option.map(string) getOrElse ifMissing
+
+    for
+      () <- debug(f"""Registrando NIÑ$char bajo: ${string(info.information)}
+              REPRESENTANTE: ${unwrapInformation(info.nonParent, "FALTANATE")},
+              MADRE: ${unwrapInformation(info.mother, "FALLECIDO")},
+              PADRE: ${unwrapInformation(info.father, "FALLECIDO")},
+              NOMBRE DE ARCHIVO DE FOTO: ${info.photo.getAbsolutePath}
+              CANTIDAD DE BENEFICIARIOS RELACIONADOS: ${info.relatedBeneficiaries.size}
+     """)
+      houseOption <- findHouse(model.houseId)
+      _ <- houseOption match {
+        case Some(house) =>
+          registerChild(model, house) >>
+            this.info(f"Scheduling max age notification") >>
+            schedule(model.dateSixMonthsBefore(house.maximumAge)) {
+              this.info(
+                f"Notifying that child ${model.information.information.name} is 6 months to reach maximum age"
+              ) >>
+                notify(Notification.SixMonthsBeforeMaxAge(model.id, house))
+            }
+        case None => ().pure[ServerLanguage]
+      }
+    yield ()
+  def eliminateChild(id: UUID) =
+    debug(
+      f""""Eliminando NIÑO con ID: $id y desvinculando sus beneficiarions relacionados de la CASA a la que pertenece"""
+    ) >> removeChild(id)
+  def findChild(id: UUID) =
+    debug(
+      f""""Buscando NIÑO con ID: $id"""
+    ) >> getChild(id)
+  def updatePersonalInformation(
+      ci: Int,
+      info: PersonalInformation,
+      isOfChild: Boolean
+  ) = for
+    () <- debug(f""""actualizando information personal bajo ci $ci
+           con informacion: ${string(info)}""")
+    () <- updateInformation(ci, info)
+    () <-
+      if (isOfChild) (for
+        child <- OptionT(getChildByCI(ci))
+        houseId <- OptionT(getHouseHousingChild(child.getID))
+        house <- OptionT(getHouse(houseId))
+        _ <- OptionT.liftF(
+          schedule(
+            child.dateSixMonthsBefore(house.maximumAge)
+          ) {
+            notify(Notification.SixMonthsBeforeMaxAge(child.getID, house))
+          }
+        )
+      yield ()).value.void
+      else
+        ().pure[ServerLanguage]
+  yield ()
+  def savePersonalInformation(info: PersonalInformation) =
+    debug(
+      f""""Registrando Information Personal con: ${string(info)}"""
+    ) >> saveInformation(info)
+  def deletePersonalInformation(ci: Int) =
+    debug(
+      f""""Eliminando Information Personal bajo CI: $ci"""
+    ) >> deleteInformation(ci)
+  def updateChildAttire(id: UUID, wear: Wear) =
+    val char = sexChar(wear)
+    debug(f""""Actualizando vestimenta de NIÑ$char con ID $id""") >>
+      updateAttire(id, wear)
+  def updateChildPhoto(id: UUID, filename: String) =
+    debug(f""""Actualizando foto de NIÑO con ID $id""") >>
+      updatePhoto(id, filename)
+
+}
