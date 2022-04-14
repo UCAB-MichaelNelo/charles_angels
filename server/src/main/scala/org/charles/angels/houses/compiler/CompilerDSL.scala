@@ -21,13 +21,16 @@ import org.charles.angels.houses.notifications.NotificationLanguage
 import org.charles.angels.houses.notifications.NotificationAction
 import org.charles.angels.houses.notifications.Notification
 import cats.data.OptionT
+import org.charles.angels.houses.reports.ReportLanguage
 
 object CompilerDSL
     extends FilesystemLanguage[ServerAction]
     with LoggingLanguage[ServerAction]
     with DatabaseLanguage[ServerAction]
     with CronLanguage[ServerAction]
-    with NotificationLanguage[ServerAction] {
+    with NotificationLanguage[ServerAction]
+    with ReportLanguage[ServerAction]
+{
   // Services related DSL
   def allocateFile(contents: Array[Byte], name: String) = info(
     f"Construyendo archivo temporal de imagen de CASA $name"
@@ -58,32 +61,39 @@ object CompilerDSL
       currentBoysHelped: Int,
       contactCI: Int,
       scheduleId: UUID
-  ) = debug(
-    f"""Registrando nueva CASA bajo:
+  ) =
+    debug(
+      f"""Registrando nueva CASA bajo:
         ID: $id, Tamaño de la imagen: ${img.length}, Nombre: $name, RIF: $rif,
         Teléfonos: ${phones.show}, Dirección: $address, Cupos máximos: $maxShares,
         Cupos ocupados: $currentShares, Edad mínima de Beneficio: $minimumAge, Edad máxima de Beneficio: $maximumAge,
         Cantidad actual de niños ayudados: $currentBoysHelped, Cantidad actual de chicas ayudadas $currentGirlsHelped,
         Cedula de Identidad del contacto de la CASA: $contactCI, ID del Horario: $scheduleId"""
-  ) >> storeHouse(
-    id,
-    img,
-    name,
-    rif,
-    phones,
-    address,
-    maxShares,
-    currentShares,
-    minimumAge,
-    maximumAge,
-    currentGirlsHelped,
-    currentBoysHelped,
-    contactCI,
-    scheduleId
-  )
-  def updateImageOfHouse(id: UUID, img: File) = debug(
-    f"Actualizando Imagen de la CASA con ID: $id, Longitud de la imagen: ${img.length}"
-  ) >> updateImage(id, img)
+    ) >>
+    storeHouse(
+      id,
+      img,
+      name,
+      rif,
+      phones,
+      address,
+      maxShares,
+      currentShares,
+      minimumAge,
+      maximumAge,
+      currentGirlsHelped,
+      currentBoysHelped,
+      contactCI,
+      scheduleId
+    ) >>
+    createNewBeneficiaryCountEntry(id) >>
+    createNewFoodAmountEntry(id) >>
+    createNewNeededWearEntry(id)
+
+  def updateImageOfHouse(id: UUID, img: File) =
+    debug(
+      f"Actualizando Imagen de la CASA con ID: $id, Longitud de la imagen: ${img.length}"
+    ) >> updateImage(id, img)
   def updateNameOfHouse(id: UUID, name: String) = debug(
     f"Actualizando nombre de la CASA con ID: $id, Nombre: $name"
   ) >> updateName(id, name)
@@ -235,40 +245,52 @@ object CompilerDSL
         LASTNAME: ${info.lastname},
         EDAD: ${info.age}
     """
-  def saveChild(model: ChildModel) =
+  def saveChild(model: ChildModel) = {
     val char = sexChar(model.wear)
-    val info = model.information
+    val ci = model.information
     def unwrapInformation(
         option: Option[PersonalInformation],
         ifMissing: String
     ) = option.map(string) getOrElse ifMissing
 
-    for
-      () <- debug(f"""Registrando NIÑ$char bajo: ${string(info.information)}
-              REPRESENTANTE: ${unwrapInformation(info.nonParent, "FALTANATE")},
-              MADRE: ${unwrapInformation(info.mother, "FALLECIDO")},
-              PADRE: ${unwrapInformation(info.father, "FALLECIDO")},
-              NOMBRE DE ARCHIVO DE FOTO: ${info.photo.getAbsolutePath}
-              CANTIDAD DE BENEFICIARIOS RELACIONADOS: ${info.relatedBeneficiaries.size}
-     """)
+    for {
+      () <- debug(f"""Registrando NIÑ$char bajo: ${string(ci.information)}
+                    REPRESENTANTE: ${unwrapInformation(ci.nonParent, "FALTANATE")},
+                    MADRE: ${unwrapInformation(ci.mother, "FALLECIDO")},
+                    PADRE: ${unwrapInformation(ci.father, "FALLECIDO")},
+                    NOMBRE DE ARCHIVO DE FOTO: ${ci.photo.getAbsolutePath}
+                    CANTIDAD DE BENEFICIARIOS RELACIONADOS: ${ci.relatedBeneficiaries.size}""")
       houseOption <- findHouse(model.houseId)
+
       _ <- houseOption match {
         case Some(house) =>
           registerChild(model, house) >>
-            this.info(f"Scheduling max age notification") >>
+            incrementBeneficiaryCount(house.id) >>
+            incrementFoodAmountNeededInHouse(house.id, model.id, Vector.empty) >>
+            addWearNeededInBeneficiaryHouse(house.id, model.wear) >>
+            info(f"Scheduling max age notification") >>
             schedule(model.dateSixMonthsBefore(house.maximumAge)) {
-              this.info(
-                f"Notifying that child ${model.information.information.name} is 6 months to reach maximum age"
-              ) >>
-                notify(Notification.SixMonthsBeforeMaxAge(model.id, house))
+              info(f"Notifying that child ${model.information.information.name} is 6 months to reach maximum age")
+                >> notify(Notification.SixMonthsBeforeMaxAge(model.id, house))
             }
         case None => ().pure[ServerLanguage]
       }
-    yield ()
-  def eliminateChild(id: UUID) =
-    debug(
-      f""""Eliminando NIÑO con ID: $id y desvinculando sus beneficiarions relacionados de la CASA a la que pertenece"""
-    ) >> removeChild(id)
+
+    } yield ()
+  }
+  def eliminateChild(id: UUID) = {
+    OptionT.some[ServerLanguage] { debug(f""""Eliminando NIÑO con ID: $id y desvinculando sus beneficiarions relacionados de la CASA a la que pertenece""") }
+      >> {
+        for {
+          child <- OptionT { getChild(id) }
+          houseId <- OptionT { getHouseHousingChild(id) }
+          _ <- OptionT.some { decrementBeneficiaryCount(houseId) }
+          _ <- OptionT.some { decrementFoodAmountNeededInHouse(houseId, id, Vector.empty) }
+          _ <- OptionT.some { removeWearNeededInBeneficiaryHouse(houseId, child.wear) }
+        } yield ()
+      }
+      >> OptionT.some { removeChild(id) }
+  }.value.void
   def findChild(id: UUID) =
     debug(
       f""""Buscando NIÑO con ID: $id"""
@@ -283,16 +305,14 @@ object CompilerDSL
     () <- updateInformation(ci, info)
     () <-
       if (isOfChild) (for
-        child <- OptionT(getChildByCI(ci))
-        houseId <- OptionT(getHouseHousingChild(child.getID))
-        house <- OptionT(getHouse(houseId))
-        _ <- OptionT.liftF(
-          schedule(
-            child.dateSixMonthsBefore(house.maximumAge)
-          ) {
+        child <- OptionT { getChildByCI(ci) }
+        houseId <- OptionT { getHouseHousingChild(child.getID) }
+        house <- OptionT { getHouse(houseId) }
+        _ <- OptionT.some {
+          schedule(child.dateSixMonthsBefore(house.maximumAge)) {
             notify(Notification.SixMonthsBeforeMaxAge(child.getID, house))
           }
-        )
+        }
       yield ()).value.void
       else
         ().pure[ServerLanguage]
@@ -308,7 +328,15 @@ object CompilerDSL
   def updateChildAttire(id: UUID, wear: Wear) =
     val char = sexChar(wear)
     debug(f""""Actualizando vestimenta de NIÑ$char con ID $id""") >>
-      updateAttire(id, wear)
+      updateAttire(id, wear) >> {
+        for {
+          houseId <- OptionT[ServerLanguage, UUID] { getHouseHousingChild(id) }
+          _ <- OptionT.some { removeWearNeededInBeneficiaryHouse(houseId, wear) }
+          _ <- OptionT.some { addWearNeededInBeneficiaryHouse(houseId, wear) }
+        } yield ()
+      }
+      .value
+      .void
   def updateChildPhoto(id: UUID, filename: String) =
     debug(f""""Actualizando foto de NIÑO con ID $id""") >>
       updatePhoto(id, filename)

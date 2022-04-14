@@ -29,6 +29,8 @@ import org.charles.angels.houses.cron.`cats-effect`.given
 import org.charles.angels.houses.notifications.NotificationExecutor
 import org.charles.angels.houses.notifications.fs2.Fs2
 import org.charles.angels.houses.notifications.fs2.given
+import org.charles.angels.houses.reports.mongodb.MongoDB
+import org.charles.angels.houses.reports.mongodb.given
 import org.charles.angels.houses.shared.Executor
 import org.charles.angels.houses.compiler.ApplicationLanguage
 import org.charles.angels.houses.compiler.Compiler
@@ -36,6 +38,7 @@ import org.charles.angels.houses.compiler.ServerLanguage
 import org.charles.angels.houses.errors.ServerError
 import org.charles.angels.houses.http.HttpServer
 import cats.effect.kernel.Resource
+import org.charles.angels.houses.reports.ReportExecutor
 
 object Main extends IOApp {
   private def executor = for
@@ -60,8 +63,9 @@ object Main extends IOApp {
     (notificationStream, notificationInterpreter) <- NotificationExecutor[IO](
       Fs2()
     )
+    mongoInterpreter <- ReportExecutor[IO](MongoDB("localhost", 27017))
     unscheduledInterpreter =
-      notificationInterpreter or (fsInterpreter or (logInterpreter or (dbInterpreter)))
+      mongoInterpreter or (notificationInterpreter or (fsInterpreter or (logInterpreter or (dbInterpreter))))
     cronInterpreter <- CronExecutor(
       CatsEffectScheduler[IO](unscheduledInterpreter)
     )

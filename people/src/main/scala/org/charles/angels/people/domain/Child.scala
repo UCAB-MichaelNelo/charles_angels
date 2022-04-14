@@ -32,9 +32,9 @@ enum Child { child =>
     case Child.Girl(_, inf, _) => inf
   }
 
-  private def setInformation(information: ChildInformation) = child match {
-    case Child.Boy(id, _, wear)  => new Child.Boy(id, information, wear)
-    case Child.Girl(id, _, wear) => new Child.Girl(id, information, wear)
+  def wear = child match {
+    case Boy(_, _, wear) => Wear.BoyWear(wear)
+    case Girl(_, _, wear) => Wear.GirlWear(wear)
   }
 
   def delete = child match {
@@ -46,6 +46,11 @@ enum Child { child =>
     ChronoUnit.YEARS
       .addTo(getInformation.information.birthdate, years)
       .minusMonths(6)
+
+  private def setInformation(information: ChildInformation) = child match {
+    case Child.Boy(id, _, wear)  => new Child.Boy(id, information, wear)
+    case Child.Girl(id, _, wear) => new Child.Girl(id, information, wear)
+  }
 }
 
 object Child {

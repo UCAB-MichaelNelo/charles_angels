@@ -14,6 +14,7 @@ import org.charles.angels.houses.filesystem.FilesystemAction
 import org.charles.angels.houses.errors.ServerError
 import org.charles.angels.houses.cron.CronAction
 import org.charles.angels.houses.notifications.NotificationAction
+import org.charles.angels.houses.reports.ReportAction
 
 package object compiler:
   type ApplicationAction[A] =
@@ -24,6 +25,7 @@ package object compiler:
   private type ServerAction0[A] = EitherK[LoggingAction, DatabaseAction, A]
   private type ServerAction1[A] = EitherK[FilesystemAction, ServerAction0, A]
   private type ServerAction2[A] = EitherK[NotificationAction, ServerAction1, A]
-  type ServerAction[A] = EitherK[CronAction, ServerAction2, A]
+  private type ServerAction3[A] = EitherK[ReportAction, ServerAction2, A]
+  type ServerAction[A] = EitherK[CronAction, ServerAction3, A]
   type CompilerLanguage[F[_], A] = EitherT[Free[F, _], Throwable, A]
-  type ServerLanguage[A] = EitherT[Free[ServerAction, _], Throwable, A]
+  type ServerLanguage[A] = CompilerLanguage[ServerAction, A]

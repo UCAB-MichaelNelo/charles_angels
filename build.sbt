@@ -11,7 +11,7 @@ lazy val root = project
     name := "Charles Angels' Houses",
     version := "0.1.0"
   )
-  .aggregate(houses, server)
+  .aggregate(houses, people, server)
 
 lazy val houses = project
   .in(file("houses"))
@@ -53,7 +53,6 @@ lazy val server = project
   .in(file("server"))
   .settings(
     name := "Charles Angels' Houses Server",
-    scalaVersion := scala3Version,
     scalacOptions += "-source:future",
     scalacOptions += "-Ykind-projector:underscores",
     libraryDependencies ++= Seq(
@@ -62,8 +61,8 @@ lazy val server = project
       "org.http4s" %% "http4s-circe" % Http4sVersion,
       "org.http4s" %% "http4s-dsl" % Http4sVersion,
       "io.circe" %% "circe-generic" % CirceVersion,
-      // "io.github.kirill5k" %% "mongo4cats-core" % "0.4.7",
-      // "io.github.kirill5k" %% "mongo4cats-circe" % "0.4.7",
+      "io.github.kirill5k" %% "mongo4cats-core" % "0.4.7",
+      "io.github.kirill5k" %% "mongo4cats-circe" % "0.4.7",
       "org.typelevel" %% "cats-kernel" % "2.7.0",
       "org.typelevel" %% "cats-core" % "2.7.0",
       "org.typelevel" %% "cats-free" % "2.7.0",
