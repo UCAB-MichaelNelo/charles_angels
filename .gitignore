@@ -1,3 +1,4 @@
+.vagrant/
 .bloop/
 .bsp/
 .metals/
