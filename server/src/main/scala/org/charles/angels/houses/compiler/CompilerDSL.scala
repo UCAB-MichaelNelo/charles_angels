@@ -40,9 +40,9 @@ object CompilerDSL
   ) >> deleteFile(file)
   // House related DSL
   def findHouse(id: UUID) = for
-    findResult <- debug(f"Buscando entidad de CASA por ID: $id") >> getHouse(id)
+    findResult <- info(f"Buscando entidad de CASA por ID: $id") >> getHouse(id)
     () <- findResult match {
-      case Some(house) => debug(f"Encontrado CASA con nombre: ${house.name}")
+      case Some(house) => info(f"Encontrado CASA con nombre: ${house.name}")
       case None        => warn(f"No se encontro CASA con ID: $id")
     }
   yield findResult
@@ -62,7 +62,7 @@ object CompilerDSL
       contactCI: Int,
       scheduleId: UUID
   ) =
-    debug(
+    info(
       f"""Registrando nueva CASA bajo:
         ID: $id, Tamaño de la imagen: ${img.length}, Nombre: $name, RIF: $rif,
         Teléfonos: ${phones.show}, Dirección: $address, Cupos máximos: $maxShares,
@@ -91,52 +91,52 @@ object CompilerDSL
     createNewNeededWearEntry(id)
 
   def updateImageOfHouse(id: UUID, img: File) =
-    debug(
+    info(
       f"Actualizando Imagen de la CASA con ID: $id, Longitud de la imagen: ${img.length}"
     ) >> updateImage(id, img)
-  def updateNameOfHouse(id: UUID, name: String) = debug(
+  def updateNameOfHouse(id: UUID, name: String) = info(
     f"Actualizando nombre de la CASA con ID: $id, Nombre: $name"
   ) >> updateName(id, name)
-  def updateRIFOfHouse(id: UUID, rif: Int) = debug(
+  def updateRIFOfHouse(id: UUID, rif: Int) = info(
     f"Actualizando RIF de la CASA con ID: $id, RIF: $rif"
   ) >> updateRIF(id, rif)
-  def addPhoneToHouse(id: UUID, phone: String) = debug(
+  def addPhoneToHouse(id: UUID, phone: String) = info(
     f"Agregando Telefono a la CASA con ID: $id, Telefono: $phone"
   ) >> addPhone(id, phone)
-  def removePhoneOfHouse(id: UUID, key: Int) = debug(
+  def removePhoneOfHouse(id: UUID, key: Int) = info(
     f"Removiendo Telefono de la CASA con ID: $id, Indice: $key"
   ) >> removePhone(id, key)
-  def updatePhoneOfHouse(id: UUID, key: Int, phone: String) = debug(
+  def updatePhoneOfHouse(id: UUID, key: Int, phone: String) = info(
     f"Actualizando Telefono de la CASA con ID: $id, Indice: $key, Telefono: $phone"
   ) >> updatePhone(id, key, phone)
-  def updateMaxSharesOfHouse(id: UUID, maxShares: Int) = debug(
+  def updateMaxSharesOfHouse(id: UUID, maxShares: Int) = info(
     f"Actualizando Cupos Maximos de la con ID: $id, Cupos Maximos: $maxShares"
   ) >> updateMaxShares(id, maxShares)
-  def updateCurrentSharesOfHouse(id: UUID, currentShares: Int) = debug(
+  def updateCurrentSharesOfHouse(id: UUID, currentShares: Int) = info(
     f"Actualizando Cupos Actuales de la CASA con ID: $id, Cupos Actuales: $currentShares"
   ) >> updateCurrentShares(id, currentShares)
-  def updateMinimumAgeOfHouse(id: UUID, minimumAge: Int) = debug(
+  def updateMinimumAgeOfHouse(id: UUID, minimumAge: Int) = info(
     f"Actualizando Edad minima para beneficio de la CASA con ID: $id, Edad Minima: $minimumAge"
   ) >> updateMinimumAge(id, minimumAge)
-  def updateMaximumAgeOfHouse(id: UUID, maximumAge: Int) = debug(
+  def updateMaximumAgeOfHouse(id: UUID, maximumAge: Int) = info(
     f"Actualizando Edad maxima para beneficio de la CASA con ID: $id, Edad Maxima: $maximumAge"
   ) >> updateMaximumAge(id, maximumAge)
   def updateCurrentGirlsHelpedOfHouse(id: UUID, currentGirlsHelped: Int) =
-    debug(
+    info(
       f"Actualizando Cantidad Actual de Chicas Ayudadas de CASA con ID: $id, Cantidad Actual de Chicas Ayudadas: $currentGirlsHelped"
     ) >> updateCurrentGirlsHelperd(id, currentGirlsHelped)
   def updateCurrentBoysHelpedOfHouse(id: UUID, currentBoysHelped: Int) =
-    debug(
+    info(
       f"Actualizando Cantidad Actual de Chicos Ayudados de CASA con ID: $id, Cantidad Actual de Chicos Ayudados: $currentBoysHelped"
     ) >> updateCurrentBoysHelped(id, currentBoysHelped)
   def eliminateHouse(id: UUID) =
-    debug(f"Eliminando CASA con ID: $id") >> removeHouse(id)
+    info(f"Eliminando CASA con ID: $id") >> removeHouse(id)
   // Contact related DSL
   def findContact(ci: Int) = for
-    findResult <- debug(f"Buscando CONTACTO con Cedula: $ci") >> getContact(ci)
+    findResult <- info(f"Buscando CONTACTO con Cedula: $ci") >> getContact(ci)
     _ <- findResult match
       case Some(contact) =>
-        debug(f"Encontrado CONTACTO con Nombre ${contact.name}")
+        info(f"Encontrado CONTACTO con Nombre ${contact.name}")
       case None => warn(f"No se encontro Contacto con CI: $ci")
   yield findResult
   def registerContact(
@@ -144,29 +144,29 @@ object CompilerDSL
       name: String,
       lastname: String,
       phone: Option[String]
-  ) = debug(
+  ) = info(
     f"""Registrando CONTACTO con: CI: $ci,
         Nombre: $name, Apellido: $lastname, Telephono: ${phone.show}"""
   ) >> storeContact(ci, name, lastname, phone)
-  def changeCIOfContact(ci: Int, newCI: Int) = debug(
+  def changeCIOfContact(ci: Int, newCI: Int) = info(
     f"Actualizando CI del CONTACTO con CI: $ci, CI: $newCI"
   ) >> changeCI(ci, newCI)
-  def changeNameOfContact(ci: Int, name: String) = debug(
+  def changeNameOfContact(ci: Int, name: String) = info(
     f"Actualizando Nombre del CONTACTO con CI: $ci, Nombre: $name"
   ) >> changeName(ci, name)
-  def changeLastnameOfContact(ci: Int, lastname: String) = debug(
+  def changeLastnameOfContact(ci: Int, lastname: String) = info(
     f"Actualizando Apellido del CONTACTO con CI: $ci, Apellido: $lastname"
   ) >> changeLastname(ci, lastname)
-  def changePhoneOfContact(ci: Int, phone: String) = debug(
+  def changePhoneOfContact(ci: Int, phone: String) = info(
     f"Actualizando Telefono del CONTACTO con CI: $ci, Telefono: $phone"
   ) >> changePhone(ci, phone)
   def eliminateContact(ci: Int) =
-    debug(f"Eliminando CONTACTO con CI: $ci") >> deleteContact(ci)
+    info(f"Eliminando CONTACTO con CI: $ci") >> deleteContact(ci)
   // Schedule related DSL
   def findSchedule(id: UUID) = for
-    result <- debug(f"Buscando HORARIO con ID: $id") >> getSchedule(id)
+    result <- info(f"Buscando HORARIO con ID: $id") >> getSchedule(id)
     _ <- result match
-      case Some(s) => debug(f"Encontrado HORARIO con ID: $id, $s")
+      case Some(s) => info(f"Encontrado HORARIO con ID: $id, $s")
       case None    => warn(f"No se pudo encontrar HORARIO con ID $id")
   yield result
   def registerSchedule(
@@ -176,7 +176,7 @@ object CompilerDSL
       wednesday: Chain[ScheduleBlock],
       thursday: Chain[ScheduleBlock],
       friday: Chain[ScheduleBlock]
-  ) = debug(f"Registrando HORARIO con ID: $id") >> storeSchedule(
+  ) = info(f"Registrando HORARIO con ID: $id") >> storeSchedule(
     id,
     monday,
     tuesday,
@@ -190,14 +190,14 @@ object CompilerDSL
       key: Long,
       startTime: LocalTime,
       duration: FiniteDuration
-  ) = debug(
+  ) = info(
     f"Agregando Bloque de Horario a HORARIO con ID: $id, en el $day dia, a la hora: $startTime, duracion: $duration"
   ) >> addBlock(id, day, key, startTime, duration)
   def removeBlockOfSchedule(
       id: UUID,
       day: Int,
       key: Int
-  ) = debug(
+  ) = info(
     f"Removiendo Bloque de Horario de HORARIO con ID: $id, en el $day dia, en el indice: $key"
   ) >> removeBlock(id, day, key)
   def updateStartHourOnBlockOfSchedule(
@@ -205,7 +205,7 @@ object CompilerDSL
       day: Int,
       key: Int,
       newStartHour: Int
-  ) = debug(
+  ) = info(
     f"Actualizando Hora de Inicio de Bloque de Horario de HORARIO con ID: $id, en el $day dia, con indice $key. Hora de Inicio: $newStartHour"
   ) >> updateStartHourOnBlock(id, day, key, newStartHour)
   def updateStartMinuteOnBlockOfSchedule(
@@ -213,7 +213,7 @@ object CompilerDSL
       day: Int,
       key: Int,
       newStartMinute: Int
-  ) = debug(
+  ) = info(
     f"Actualizando Minuto de Inicio de Bloque de Horario de HORARIO con ID: $id, en el $day dia, con indice $key. Minuto de Inicio: $newStartMinute"
   ) >> updateStartMinuteOnBlock(id, day, key, newStartMinute)
   def updateDurationHoursOnBlockOfSchedule(
@@ -221,7 +221,7 @@ object CompilerDSL
       day: Int,
       key: Int,
       newDurationHours: Int
-  ) = debug(
+  ) = info(
     f"Actualizando Horas de Duracion de Bloque de Horario de HORARIO con ID: $id, en el $day dia, con indice $key. Horas de Duracion: $newDurationHours"
   ) >> updateDurationHoursOnBlock(id, day, key, newDurationHours)
   def updateDurationMinutesOnBlockOfSchedule(
@@ -229,11 +229,11 @@ object CompilerDSL
       day: Int,
       key: Int,
       newDurationMinutes: Int
-  ) = debug(
+  ) = info(
     f"Actualizando Minutos de Duracion de Bloque de Horario de HORARIO con ID: $id, en el $day dia, con indice $key. Minutos de Duracion: $newDurationMinutes"
   ) >> updateDurationMinutesOnBlock(id, day, key, newDurationMinutes)
   def eliminateSchedule(id: UUID) =
-    debug(f"Eliminando HORARIO con ID: $id") >> deleteSchedule(id)
+    info(f"Eliminando HORARIO con ID: $id") >> deleteSchedule(id)
 
   // People related DSL
   private def sexChar(wear: Wear) = wear match {
@@ -254,7 +254,7 @@ object CompilerDSL
     ) = option.map(string) getOrElse ifMissing
 
     for {
-      () <- debug(f"""Registrando NIÑ$char bajo: ${string(ci.information)}
+      () <- info(f"""Registrando NIÑ$char bajo: ${string(ci.information)}
                     REPRESENTANTE: ${unwrapInformation(ci.nonParent, "FALTANATE")},
                     MADRE: ${unwrapInformation(ci.mother, "FALLECIDO")},
                     PADRE: ${unwrapInformation(ci.father, "FALLECIDO")},
@@ -268,9 +268,9 @@ object CompilerDSL
             incrementBeneficiaryCount(house.id) >>
             incrementFoodAmountNeededInHouse(house.id, model.id, Vector.empty) >>
             addWearNeededInBeneficiaryHouse(house.id, model.wear) >>
-            info(f"Scheduling max age notification") >>
+            info(f"Agedando notificación de edad máxima") >>
             schedule(model.dateSixMonthsBefore(house.maximumAge)) {
-              info(f"Notifying that child ${model.information.information.name} is 6 months to reach maximum age")
+              info(f"Notificando que el chico ${model.information.information.name} está a 6 meses de cumplir la edad máxima")
                 >> notify(Notification.SixMonthsBeforeMaxAge(model.id, house))
             }
         case None => ().pure[ServerLanguage]
@@ -279,7 +279,7 @@ object CompilerDSL
     } yield ()
   }
   def eliminateChild(id: UUID) = {
-    OptionT.some[ServerLanguage] { debug(f""""Eliminando NIÑO con ID: $id y desvinculando sus beneficiarions relacionados de la CASA a la que pertenece""") }
+    OptionT.some[ServerLanguage] { info(f""""Eliminando NIÑO con ID: $id y desvinculando sus beneficiarions relacionados de la CASA a la que pertenece""") }
       >> {
         for {
           child <- OptionT { getChild(id) }
@@ -292,7 +292,7 @@ object CompilerDSL
       >> OptionT.some { removeChild(id) }
   }.value.void
   def findChild(id: UUID) =
-    debug(
+    info(
       f""""Buscando NIÑO con ID: $id"""
     ) >> getChild(id)
   def updatePersonalInformation(
@@ -300,7 +300,7 @@ object CompilerDSL
       info: PersonalInformation,
       isOfChild: Boolean
   ) = for
-    () <- debug(f""""actualizando information personal bajo ci $ci
+    () <- this.info(f""""actualizando information personal bajo ci $ci
            con informacion: ${string(info)}""")
     () <- updateInformation(ci, info)
     () <-
@@ -318,16 +318,16 @@ object CompilerDSL
         ().pure[ServerLanguage]
   yield ()
   def savePersonalInformation(info: PersonalInformation) =
-    debug(
+    this.info(
       f""""Registrando Information Personal con: ${string(info)}"""
     ) >> saveInformation(info)
   def deletePersonalInformation(ci: Int) =
-    debug(
+    info(
       f""""Eliminando Information Personal bajo CI: $ci"""
     ) >> deleteInformation(ci)
   def updateChildAttire(id: UUID, wear: Wear) =
     val char = sexChar(wear)
-    debug(f""""Actualizando vestimenta de NIÑ$char con ID $id""") >>
+    info(f""""Actualizando vestimenta de NIÑ$char con ID $id""") >>
       updateAttire(id, wear) >> {
         for {
           houseId <- OptionT[ServerLanguage, UUID] { getHouseHousingChild(id) }
@@ -338,7 +338,7 @@ object CompilerDSL
       .value
       .void
   def updateChildPhoto(id: UUID, filename: String) =
-    debug(f""""Actualizando foto de NIÑO con ID $id""") >>
+    info(f""""Actualizando foto de NIÑO con ID $id""") >>
       updatePhoto(id, filename)
 
 }

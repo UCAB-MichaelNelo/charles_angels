@@ -27,9 +27,12 @@ object Compiler extends (ApplicationAction ~> ServerLanguage):
 
   private object HouseQueryCompiler extends (QueryAction ~> ServerLanguage):
     def apply[A](queryAction: QueryAction[A]) = queryAction match
-      case QueryAction.GetHouse(id)    => CompilerDSL.findHouse(id)
-      case QueryAction.GetSchedule(id) => CompilerDSL.findSchedule(id)
-      case QueryAction.GetContact(id)  => CompilerDSL.findContact(id)
+      case QueryAction.GetAllContactCI    => CompilerDSL.getAllContactCI
+      case QueryAction.DoesRIFExists(rif) => CompilerDSL.doesRifExist(rif)
+      case QueryAction.GetAllHouses       => CompilerDSL.getAllHouses
+      case QueryAction.GetHouse(id)       => CompilerDSL.findHouse(id)
+      case QueryAction.GetSchedule(id)    => CompilerDSL.findSchedule(id)
+      case QueryAction.GetContact(id)     => CompilerDSL.findContact(id)
 
   private object HouseEventCompiler
       extends (DomainEventAction ~> ServerLanguage):

@@ -12,3 +12,4 @@ enum ApplicationError:
   case HouseNotFoundError(id: UUID)
   case ContactNotFoundError(id: Int)
   case ScheduleNotFoundError(id: UUID)
+  case ExistingRif(rif: Int)

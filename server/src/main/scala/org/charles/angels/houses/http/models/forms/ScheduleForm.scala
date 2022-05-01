@@ -21,25 +21,3 @@ final case class ScheduleForm(
     thursday: Vector[RawScheduleForm],
     friday: Vector[RawScheduleForm]
 )
-
-given [F[_]: Concurrent: Parallel]: EntityDecoder[F, ScheduleForm] =
-  EntityDecoder.multipart
-    .map { m =>
-      def rawScheduleOfDay(day: String) = (
-        m.parts.field[Vector[Int]](f"$day[][startHour]"),
-        m.parts.field[Vector[Int]](f"$day[][startMinute]"),
-        m.parts.field[Vector[Int]](f"$day[][durationHours]"),
-        m.parts.field[Vector[Int]](f"$day[][durationMinutes]")
-      ).mapN((sH, sM, dH, dM) =>
-        (sH, sM, dH, dM).parMapN(RawScheduleForm.apply)
-      )
-
-      (
-        rawScheduleOfDay("monday"),
-        rawScheduleOfDay("tuesday"),
-        rawScheduleOfDay("wednesday"),
-        rawScheduleOfDay("thursday"),
-        rawScheduleOfDay("friday")
-      ).parMapN(ScheduleForm.apply)
-    }
-    .flatMapR(result => DecodeResult(result.value))

@@ -7,9 +7,10 @@ import cats.Parallel
 import cats.data.EitherT
 import org.http4s.DecodeResult
 import fs2.Stream
+import cats.effect.std.Console
 
-final case class HouseForm[F[_]](
-    fs: Stream[F, Byte],
+final case class HouseForm(
+    fileExtension: String,
     name: String,
     rif: Int,
     phones: Vector[String],
@@ -21,22 +22,3 @@ final case class HouseForm[F[_]](
     currentGirlsHelped: Int,
     currentBoysHelped: Int
 )
-
-given [F[_]: Concurrent: Parallel]: EntityDecoder[F, HouseForm[F]] =
-  EntityDecoder.multipart
-    .map { m =>
-      (
-        m.parts.field[Stream[F, Byte]]("image"),
-        m.parts.field[String]("house_name"),
-        m.parts.field[Int]("rif"),
-        m.parts.field[Vector[String]]("phones[]"),
-        m.parts.field[String]("address"),
-        m.parts.field[Int]("maxShares"),
-        m.parts.field[Int]("currentShares"),
-        m.parts.field[Int]("minimumAge"),
-        m.parts.field[Int]("maximumAge"),
-        m.parts.field[Int]("currentGirlsHelped"),
-        m.parts.field[Int]("currentBoysHelped")
-      ).parMapN(HouseForm.apply)
-    }
-    .flatMapR(result => DecodeResult(result.value))

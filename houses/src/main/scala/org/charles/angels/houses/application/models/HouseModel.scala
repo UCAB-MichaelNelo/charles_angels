@@ -1,7 +1,7 @@
 package org.charles.angels.houses.application.models
 
 final case class HouseModel(
-    img: Array[Byte],
+    filename: String,
     name: String,
     rif: Int,
     phones: Vector[String],

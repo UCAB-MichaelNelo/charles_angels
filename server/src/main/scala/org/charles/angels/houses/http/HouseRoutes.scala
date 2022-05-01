@@ -38,11 +38,21 @@ import org.charles.angels.houses.application.errors.ApplicationError as HouseApp
 import org.charles.angels.houses.application.ApplicationAction as HouseApplicationAction
 import fs2.io.file.Path as FPath
 import org.charles.angels.houses.compiler.CompilerDSL
+import cats.effect.std.Console
+import scala.concurrent.duration.FiniteDuration
 
 class HouseRoutes[F[_]: Async: Concurrent: Parallel: Executor]
     extends ServerRoutes[F] {
 
   def routes = HttpRoutes.of[F] {
+    case GET -> Root / IntVar(rif) => for
+      () <- ApplicationDSL.assertRifDoesNotExist(rif).run
+      response <- Ok("Rif does not exist")
+    yield response
+    case GET -> Root => for
+      houses <- ApplicationDSL.getAllHouses.run
+      response <- Ok(houses.map(HouseViewModel(_)).asJson)
+    yield response
     case GET -> Root / UUIDVar(id) =>
       for
         house <- ApplicationDSL.findHouse(id).run
@@ -54,10 +64,16 @@ class HouseRoutes[F[_]: Async: Concurrent: Parallel: Executor]
         stream <- CompilerDSL.getFileContents(house.img).run
         response <- Ok(stream[F])
       yield response
+    case req @ PUT -> Root / "image" :? ImageExtensionQueryParamMatcher(ext) +& RifQueryParamMatcher(rif) =>
+      for
+        write <- CompilerDSL.createFile(s"$rif.$ext").run
+        _ <- write(req.body)
+        response <- Ok("Image allocated succesfully")
+      yield response
     case req @ POST -> Root =>
       for
-        form <- req.as[FullHouseForm[F]]
-        model <- form.toHouseModel(_.compile.toVector.map(_.toArray))
+        form <- req.as[FullHouseForm]
+        model <- form.toHouseModel { CompilerDSL.resolve }.run
         _ <- ApplicationDSL.createHouse(model).run
         response <- Ok("Creation Succesfull")
       yield response

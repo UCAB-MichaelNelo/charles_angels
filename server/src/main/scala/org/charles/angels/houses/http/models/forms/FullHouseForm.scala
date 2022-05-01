@@ -2,6 +2,7 @@ package org.charles.angels.houses.http.models.forms
 
 import cats.effect.implicits.*
 import cats.effect.kernel.Concurrent
+import cats.effect.std.Console
 import cats.syntax.all.*
 import cats.Parallel
 import org.http4s.implicits.*
@@ -13,32 +14,23 @@ import org.charles.angels.houses.application.models.ScheduleModel
 import org.charles.angels.houses.application.models.ContactModel
 import org.charles.angels.houses.application.models.HouseModel
 import cats.Functor
+import org.http4s.dsl.impl.QueryParamDecoderMatcher
 
-final case class FullHouseForm[F[_]](
-    house: HouseForm[F],
+object ImageExtensionQueryParamMatcher
+    extends QueryParamDecoderMatcher[String]("ext")
+
+object RifQueryParamMatcher
+    extends QueryParamDecoderMatcher[Int]("rif")
+
+final case class FullHouseForm(
+    house: HouseForm,
     contact: ContactForm,
     schedule: ScheduleForm
-)
-
-given [F[_]: Concurrent: Parallel]: EntityDecoder[F, FullHouseForm[F]] with
-  private val houseDecoder: EntityDecoder[F, HouseForm[F]] = implicitly
-  private val contactDecoder: EntityDecoder[F, ContactForm] = implicitly
-  private val scheduleDecoder: EntityDecoder[F, ScheduleForm] = implicitly
-
-  def consumes =
-    houseDecoder.consumes ++ contactDecoder.consumes ++ scheduleDecoder.consumes
-  def decode(media: Media[F], strict: Boolean) =
-    (
-      houseDecoder.decode(media, strict),
-      contactDecoder.decode(media, strict),
-      scheduleDecoder.decode(media, strict)
-    ).parMapN(FullHouseForm.apply)
-
-extension [F[_]: Functor](form: FullHouseForm[F])
-  def toHouseModel(consume: fs2.Stream[F, Byte] => F[Array[Byte]]) =
-    consume(form.house.fs).map { fileContents =>
+) { form =>
+  def toHouseModel[F[_]: Functor](resolve: String => F[String]) =
+    resolve(s"${form.house.rif}.${form.house.fileExtension}").map { filename =>
       HouseModel(
-        fileContents.toArray,
+        filename,
         form.house.name,
         form.house.rif,
         form.house.phones,
@@ -109,3 +101,4 @@ extension [F[_]: Functor](form: FullHouseForm[F])
         )
       )
     }
+}

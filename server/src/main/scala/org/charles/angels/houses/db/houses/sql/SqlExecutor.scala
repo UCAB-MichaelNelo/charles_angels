@@ -91,6 +91,27 @@ class SqlExecutor[F[_]: Async](xa: Transactor[F])
       .attempt
 
   private def interpret[A](action: DatabaseAction[A]): F[A] = action match {
+    case DatabaseAction.GetAllContactCI =>
+      sql"""SELECT ci FROM "contacts""""
+        .query[Int]
+        .to[Vector]
+        .transact(xa)
+        .attempt
+    case DatabaseAction.DoesRifExist(rif) =>
+      sql"""SELECT rif FROM  "houses" WHERE rif = $rif"""
+        .query[Int]
+        .option
+        .transact(xa)
+        .attempt
+    case DatabaseAction.GetAllHouses => 
+      sql"""SELECT * FROM "houses""""
+        .query[SqlExecutor.HouseModel]
+        .to[Vector]
+        .transact(xa)
+        .nested
+        .map(_.toHouse)
+        .value
+        .attempt
     case DatabaseAction.GetHouse(id) => findHouse(id)
     case DatabaseAction.StoreHouse(
           id,

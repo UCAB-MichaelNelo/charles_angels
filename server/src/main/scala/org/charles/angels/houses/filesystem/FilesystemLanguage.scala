@@ -11,12 +11,14 @@ import cats.effect.kernel.Async
 enum FilesystemAction[A]:
   case CreateFile(contents: Array[Byte], name: String)
       extends FilesystemAction[Either[Throwable, File]]
+  case Resolve(name: String) extends FilesystemAction[String]
   case DeleteFile(file: File) extends FilesystemAction[Either[Throwable, Unit]]
   case GetFileContents(path: String) extends FilesystemAction[GetStream]
   case CreateFileWithStreamedContents(name: String)
       extends FilesystemAction[WriteStream]
 
 trait FilesystemLanguage[F[_]](using InjectK[FilesystemAction[_], F]) {
+  def resolve(name: String): CompilerLanguage[F, String] = EitherT.liftF(Free.liftInject(FilesystemAction.Resolve(name)))
   def createFile(
       contents: Array[Byte],
       name: String

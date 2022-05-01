@@ -43,7 +43,7 @@ object Contact:
 
   object CI:
     def apply(ci: Int) =
-      (if (ci > 0 || ci.toString.length > 9) ci.validNec
+      (if (ci > 0 && ci.toString.length <= 9) ci.validNec
        else ContactError.InvalidCI.invalidNec)
 
   object Name:

@@ -1,6 +1,8 @@
+import org.scalajs.jsenv.nodejs.NodeJSEnv
 val scala3Version = "3.1.1"
 val Http4sVersion = "0.23.10"
 val CirceVersion = "0.14.1"
+val ScalaJsReactVer = "2.1.0"
 
 ThisBuild / scalaVersion := scala3Version
 ThisBuild / fork / run := true
@@ -81,3 +83,34 @@ lazy val server = project
     )
   )
   .dependsOn(houses, people)
+
+// lazy val client = project
+// .in(file("client"))
+// .enablePlugins(ScalaJSPlugin, ScalaJSBundlerPlugin)
+// .settings(
+// name := "Charles Angels' Client",
+// scalaVersion := "2.13.8",
+// scalaJSUseMainModuleInitializer := true,
+// libraryDependencies ++= Seq(
+// "com.github.japgolly.scalacss" %%% "core" % "1.0.0",
+// "com.github.japgolly.scalacss" %%% "ext-react" % "1.0.0",
+// // Optionally include scalajs-react Callback classes
+// // (Note: these need to come before "core-bundle-cats_effect")
+// "com.github.japgolly.scalajs-react" %%% "callback" % ScalaJsReactVer,
+// "com.github.japgolly.scalajs-react" %%% "callback-ext-cats" % ScalaJsReactVer,
+// "com.github.japgolly.scalajs-react" %%% "callback-ext-cats_effect" % ScalaJsReactVer,
+//
+// // Mandatory
+// "com.github.japgolly.scalajs-react" %%% "core-bundle-cats_effect" % ScalaJsReactVer,
+// "io.kinoplan" %%% "scalajs-react-material-ui-core" % "0.3.1",
+// "io.kinoplan" %%% "scalajs-react-material-ui-icons" % "0.3.1",
+// "io.kinoplan" %%% "scalajs-react-material-ui-lab" % "0.3.1"
+// ),
+// Compile / npmDependencies ++= Seq(
+// "react" -> "*",
+// "react-dom" -> "*",
+// "@material-ui/core" -> "*",
+// "@material-ui/icons" -> "*",
+// "@material-ui/lab" -> "*"
+// )
+// )

@@ -2,6 +2,7 @@ package org.charles.angels.houses.application
 
 import cats.syntax.all.*
 import cats.data.ValidatedNec
+import cats.data.NonEmptyChain
 import org.charles.angels.houses.application.standard.StandardLanguage
 import org.charles.angels.houses.application.events.DomainEventLanguage
 import org.charles.angels.houses.application.queries.QueryLanguage
@@ -17,6 +18,8 @@ import org.charles.angels.houses.domain.events.ContactEvent
 import org.charles.angels.houses.domain.RawScheduleBlock
 import org.charles.angels.houses.domain.ScheduleBlock
 import org.charles.angels.houses.domain.events.ScheduleEvent
+import org.charles.angels.houses.application.errors.ApplicationError
+import java.io.File
 
 object ApplicationDSL:
   private val STDL = StandardLanguage[ApplicationAction]
@@ -56,15 +59,27 @@ object ApplicationDSL:
 
   def findHouse(id: UUID) = getHouse(id)
 
+  def getAllHouses = QL.getAllHouses
+
+  def assertRifDoesNotExist(rif: Int): ApplicationLanguage[Unit] = QL.doesRifExist(rif).leftWiden[NonEmptyChain[ApplicationError]]
+
+  def getAllContactCI = QL.getAllContactCI
+
   def createHouse(house: HouseModel) = for
-    (contact, contactCreated) <- of(
-      Contact(
-        house.contact.ci,
-        house.contact.name,
-        house.contact.lastname,
-        house.contact.phone
-      )
-    )
+    _ <- assertRifDoesNotExist(house.rif)
+    (contact, contactCreated) <- getContact(house.contact.ci)
+      .map(_ -> None)
+      .handleErrorWith { _ =>
+        for (contact, evt) <- of(
+            Contact(
+              house.contact.ci,
+              house.contact.name,
+              house.contact.lastname,
+              house.contact.phone
+            )
+          )
+        yield (contact, Some(evt))
+      }
     (schedule, scheduleCreated) <- of(
       Schedule(
         house.schedule.monday,
@@ -74,7 +89,7 @@ object ApplicationDSL:
         house.schedule.friday
       )
     )
-    file <- alloc(house.img, house.name)
+    file = File(house.filename)
     result <- of(
       House(
         file,
@@ -95,7 +110,10 @@ object ApplicationDSL:
     (house, houseCreated) <- result match
       case Left(e)  => dealloc(file) >> e.raiseError
       case Right(t) => t.pure[ApplicationLanguage]
-    () <- notifyContactEvent(contactCreated) >>
+    () <- (contactCreated match {
+      case Some(event) => notifyContactEvent(event)
+      case None        => ().pure[ApplicationLanguage]
+    }) >>
       notifyScheduleEvent(scheduleCreated) >>
       notifyHouseEvent(houseCreated)
   yield house

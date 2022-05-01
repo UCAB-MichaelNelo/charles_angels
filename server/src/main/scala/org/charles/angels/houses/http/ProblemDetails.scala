@@ -255,7 +255,7 @@ given Detailer[HouseApplicationError] with
         s"""El bloque que empieza en $starts y dura $duration acaba al dia siguiente"""
       )
   }
-  private val handler: HouseApplicationError => ProblemDetails = {
+  private val handler: HouseApplicationError => ProblemDetails = { 
     case HouseApplicationError.HouseDomainError(err) =>
       houseHandler(err)
     case HouseApplicationError.HouseNotFoundError(id) =>
@@ -280,6 +280,13 @@ given Detailer[HouseApplicationError] with
         404,
         "Horario no encontrado",
         s"""No se encontro un horario bajo el ID: "$id""""
+      )
+    case HouseApplicationError.ExistingRif(rif) =>
+      ProblemDetails.Single(
+        "AlreadyRegisteredRif",
+        409,
+        "El rif ingresado ya existe",
+        s"""Ya existe una casa bajo el rif: $rif"""
       )
   }
   def detail(e: HouseApplicationError) = handler(e)

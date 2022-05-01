@@ -18,15 +18,7 @@ class Fs2NotificationExecutor[F[_]: [F[_]] =>> MonadError[F, Throwable]](
     topic: Topic[F, Notification]
 ) extends (NotificationAction ~> F) {
   def apply[A](action: NotificationAction[A]) = action match {
-    case NotificationAction.Notify(notification) =>
-      topic
-        .publish1(notification)
-        .map(
-          _.leftMap(_ => ServerError.NotificationStreamClosed).void
-            .leftWiden[Throwable]
-        )
-        .rethrow
-        .attempt
+    case NotificationAction.Notify(notification) => topic.publish1(notification).void.attempt
   }
 }
 

@@ -15,6 +15,9 @@ import cats.data.EitherT
 import cats.free.Free
 
 enum DatabaseAction[A]:
+  case GetAllContactCI extends DatabaseAction[Either[Throwable, Vector[Int]]]
+  case DoesRifExist(rif: Int) extends DatabaseAction[Either[Throwable, Option[Int]]]
+  case GetAllHouses extends DatabaseAction[Either[Throwable, Vector[House]]]
   case StoreHouse(
       id: UUID,
       img: File,
@@ -135,6 +138,11 @@ enum DatabaseAction[A]:
       extends DatabaseAction[Either[Throwable, Option[Schedule]]]
 
 trait DatabaseLanguage[F[_]](using InjectK[DatabaseAction, F]):
+  def getAllContactCI = EitherT(Free.liftInject(DatabaseAction.GetAllContactCI))
+  def doesRifExist(rif: Int) = EitherT(
+    Free.liftInject(DatabaseAction.DoesRifExist(rif))
+  )
+  def getAllHouses = EitherT(Free.liftInject(DatabaseAction.GetAllHouses))
   def getHouse(id: UUID): CompilerLanguage[F, Option[House]] = EitherT(
     Free.liftInject(DatabaseAction.GetHouse(id))
   )

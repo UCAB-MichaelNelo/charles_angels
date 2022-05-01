@@ -12,8 +12,10 @@ import org.charles.angels.houses.shared.Executor
 import org.http4s.ember.server.EmberServerBuilder
 import scala.concurrent.duration.Duration
 import cats.effect.kernel.Resource
+import cats.effect.std.Console
+import org.http4s.server.middleware.CORS
 
-class HttpServer[F[_]: Async: Concurrent: Parallel](using
+class HttpServer[F[_]: Async: Console: Concurrent: Parallel](using
     Executor[F]
 ) {
   def server =
@@ -23,13 +25,13 @@ class HttpServer[F[_]: Async: Concurrent: Parallel](using
       .withPort(port"3500")
       .withHttpWebSocketApp(_ =>
         (
-          Router[F](
+          CORS(Router[F](
             "/houses" -> HouseRoutes[F].service,
             "/contacts" -> ContactRoutes[F].service,
             "/schedules" -> ScheduleRoutes[F].service,
             "/children" -> ChildRoutes[F].service,
             "/notifications" -> NotificationRoutes[F].service
-          ).orNotFound
+          )).orNotFound
         )
       )
       .withIdleTimeout(Duration.Inf)

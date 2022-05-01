@@ -26,6 +26,7 @@ import cats.Inject
 import org.http4s.HttpVersion
 import org.http4s.Headers
 import org.http4s.MessageFailure
+import org.charles.angels.houses.filesystem.jvm.ImageNotFoundError
 
 trait ErrorHandler[F[_]] {
   def handle(serverError: ServerError): F[Response[F]]
@@ -75,6 +76,10 @@ private given ErrorHandler[ServerLanguage] with
       CompilerDSL.error(
         s"ERROR DE BASE DE DATOS: ${e.getMessage}"
       ) >> InternalServerError()
+    case ServerError.FilesystemError(ImageNotFoundError) =>
+      CompilerDSL.warn(
+        s"No se pudo encontrar la imagen solicitada"
+      ) >> NotFound()
     case ServerError.FilesystemError(e) =>
       CompilerDSL.error(
         s"ERROR DE SISTEMA DE ARCHIVOS: ${e.getMessage}"
@@ -94,10 +99,14 @@ private given ErrorHandler[ServerLanguage] with
   def unhandled(e: Throwable) = e match {
     case e: MessageFailure =>
       CompilerDSL.error(
-        s"ERROR DE CODIFICAION: ${e.message}"
+        s"""ERROR DE CODIFICAION: ${e.message}
+        CAUSE:       ${e.cause}
+        STACK TRACE: ${e.getStackTrace.mkString("\n")}
+        """
       ) >> e.toHttpResponse(HttpVersion.`HTTP/1.1`).pure[ServerLanguage]
     case e =>
-      CompilerDSL.error(s"ERROR DESCONOCIDO: $e") >> InternalServerError()
+      CompilerDSL.error(s"""ERROR DESCONOCIDO: $e 
+      STACK TRACE: ${e.getStackTrace.mkString("\n")}""") >> InternalServerError()
   }
 
 given [F[_]: Monad](using E: Executor[F]): ErrorHandler[F] with

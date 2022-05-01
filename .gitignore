@@ -7,3 +7,5 @@ target/
 *.class
 *.log
 *.pdf
+.vscode
+**/storage/

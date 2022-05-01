@@ -26,6 +26,9 @@ class ContactRoutes[F[_]: Async: Concurrent: Parallel: Executor]
     extends ServerRoutes[F] {
 
   def routes = HttpRoutes.of[F] {
+    case GET -> Root / "ci" => Ok {
+      ApplicationDSL.getAllContactCI.run.map(_.asJson)
+    }
     case GET -> Root / IntVar(ci) =>
       for
         contact <- ApplicationDSL.findContact(ci).run
