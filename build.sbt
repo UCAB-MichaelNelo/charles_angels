@@ -1,4 +1,3 @@
-import org.scalajs.jsenv.nodejs.NodeJSEnv
 val scala3Version = "3.1.1"
 val Http4sVersion = "0.23.10"
 val CirceVersion = "0.14.1"
@@ -11,7 +10,7 @@ lazy val root = project
   .in(file("."))
   .settings(
     name := "Charles Angels' Houses",
-    version := "0.1.0"
+    version := "1.0",
   )
   .aggregate(houses, people, server)
 
@@ -53,10 +52,13 @@ lazy val people = project
 
 lazy val server = project
   .in(file("server"))
+  .enablePlugins(JavaAppPackaging)
   .settings(
+    scriptClasspath := Seq("*"),
     name := "Charles Angels' Houses Server",
     scalacOptions += "-source:future",
     scalacOptions += "-Ykind-projector:underscores",
+    version := "1.0",
     libraryDependencies ++= Seq(
       "org.http4s" %% "http4s-ember-server" % Http4sVersion,
       "org.http4s" %% "http4s-ember-client" % Http4sVersion,
@@ -86,7 +88,6 @@ lazy val server = project
       "org.scalameta" %% "munit-scalacheck" % "0.7.29" % Test
     )
   )
-  .enablePlugins(JavaAppPackaging)
   .dependsOn(houses, people)
 
 // lazy val client = project
