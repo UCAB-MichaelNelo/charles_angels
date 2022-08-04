@@ -57,7 +57,6 @@ lazy val server = project
     name := "Charles Angels' Houses Server",
     scalacOptions += "-source:future",
     scalacOptions += "-Ykind-projector:underscores",
-    mainClass := Some("org.charles.angels.houses.server.Main"),
     libraryDependencies ++= Seq(
       "org.http4s" %% "http4s-ember-server" % Http4sVersion,
       "org.http4s" %% "http4s-ember-client" % Http4sVersion,
