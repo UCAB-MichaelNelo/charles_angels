@@ -13,6 +13,12 @@ import cats.effect.kernel.Concurrent
 import org.charles.angels.houses.shared.Executor
 import org.http4s.Request
 import org.http4s.StaticFile
+import org.http4s.Status.Redirection
+import org.http4s.Response
+import org.http4s.Status
+import org.http4s.Header
+import org.http4s.headers.Location
+import org.http4s.Uri
 
 class StaticFilesRoutes[F[_]: Async: Parallel: Concurrent: Executor]
     extends ServerRoutes[F] {
@@ -31,6 +37,11 @@ class StaticFilesRoutes[F[_]: Async: Parallel: Concurrent: Executor]
       static(s"js/$path", req)
     case req @ GET -> "img" /: path =>
       static(s"img/$path", req)
+    case GET -> Root =>
+      Response[F]()
+        .withStatus(Status.Found)
+        .withHeaders(Location(Uri.unsafeFromString("/client")))
+        .pure[F]
   }
 
 }
