@@ -1,1 +1,1 @@
-web: server/target/universal/scripts/bin/charles-angels-houses-server
+web: server/target/universal/stage/bin/charles-angels-houses-server
