@@ -14,6 +14,8 @@ enum ServerError extends Throwable:
   case FilesystemError(error: Throwable)
   case ParseError(error: MessageFailure)
   case NotificationStreamClosed
+  case InvalidUserOrPassword
+  case UnauthorizedAccess
 
 given necHousesSE: Inject[NonEmptyChain[HousesApplicationError], ServerError]
   with

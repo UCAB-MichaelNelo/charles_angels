@@ -20,6 +20,8 @@ import org.charles.angels.people.domain.events.ChildEvent
 import cats.data.Chain
 import monocle.Optional
 import java.util.UUID
+import org.charles.angels.people.domain.BoyAttire
+import org.charles.angels.people.domain.errors.DressError
 
 object ApplicationDSL
     extends QueryLanguage[ApplicationAction]
@@ -48,6 +50,16 @@ object ApplicationDSL
     _ <- publish(evt)
   yield nChild
 
+  private def updateInformation(
+      id: UUID,
+      inf: Option[PersonalInformation],
+      op: Option[PersonalInformation] => State[Child, ChildEvent]
+  ) = for
+    child <- getChild(id)
+    (nChild, evt) = op(inf).run(child).value
+    _ <- publish(evt)
+  yield nChild
+
   def updatePersonalInformationOfChild(
       id: UUID,
       inf: PersonalInformationModel
@@ -55,39 +67,72 @@ object ApplicationDSL
 
   def updatePersonalInformationOfChildsMother(
       id: UUID,
-      inf: PersonalInformationModel
-  ) = updateInformation(id, inf, Child.setMotherInformation)
-
+      ci: Option[Int]
+  ) = for
+    inf <- ci traverse findExistantPersonalInformationOrFail
+    res <- updateInformation(id, inf, Child.setMotherInformation)
+  yield res
   def updatePersonalInformationOfChildsFather(
       id: UUID,
-      inf: PersonalInformationModel
-  ) = updateInformation(id, inf, Child.setFatherInformation)
+      ci: Option[Int]
+  ) = for
+    inf <- ci traverse findExistantPersonalInformationOrFail
+    res <- updateInformation(id, inf, Child.setFatherInformation)
+  yield res
 
   def updatePersonalInformationOfChildsNonParentRepresentative(
       id: UUID,
-      inf: PersonalInformationModel
-  ) = updateInformation(id, inf, Child.setNonParentInformation)
-
-  def addRelatedBeneficiary(id: UUID, inf: PersonalInformationModel) =
-    updateInformation(id, inf, Child.addRelatedBeneficiary)
-
-  def removedRelatedBeneficiary(id: UUID, benKey: Int) = for
+      ci: Option[Int]
+  ) = for
+    inf <- ci traverse findExistantPersonalInformationOrFail
+    res <- updateInformation(id, inf, Child.setNonParentInformation)
+  yield res
+  
+  def addRelatedBeneficiary(id: UUID, benId: UUID) = for
     child <- getChild(id)
-    (evt, nChild) = Child.removeRelatedBeneficiary(benKey).run(child).value
+    _ <- getChild(benId)
+    (nChild, evt) = Child.addRelatedBeneficiary(benId).run(child).value
+    _ <- publish(evt)
   yield nChild
 
-  def updateRelatedBeneficiary(
-      id: UUID,
-      benKey: Int,
-      pInf: PersonalInformationModel
-  ) =
-    updateInformation(id, pInf, Child.updateRelatedBeneficiary(benKey, _))
+  def removedRelatedBeneficiary(id: UUID, benId: UUID) = for
+    child <- getChild(id)
+    (nChild, evt) = Child.removeRelatedBeneficiary(benId).run(child).value
+    _ <- publish(evt)
+  yield nChild
 
   def deleteChild(id: UUID) = for
     child <- getChild(id)
     evt = child.delete
     _ <- publish(evt)
-  yield ()
+  yield child
+
+  def updateChildPhoto(id: UUID, photo: File) = for
+    child <- getChild(id)
+    (nchild, evt) = Child.setPhoto(photo).run(child).value
+    _ <- publish(evt)
+  yield evt
+
+  def updateChildAttire(id: UUID, wear: ValidatedNec[DressError, Wear]) = for
+    wear <- of(wear)
+    child <- getChild(id)
+    modifications = wear match {
+      case Wear.BoyWear(attire) => for
+          shortEvt <- Child.setShortOrTrousersSize(attire.shortOrTrousersSize)
+          tShirtEvt <- Child.setTShirtOrShirtSize(attire.tshirtOrshirtSize)
+          sweaterEvt <- Child.setSweaterSize(attire.sweaterSize)
+          footWearEvt <- Child.setFootwearSize(attire.footwearSize)
+        yield Vector(shortEvt, tShirtEvt, sweaterEvt, footWearEvt)
+      case Wear.GirlWear(attire) =>for
+          shortEvt <- Child.setShortOrTrousersSize(attire.shortOrTrousersSize)
+          tShirtEvt <- Child.setTShirtOrShirtSize(attire.tshirtOrshirtSize)
+          dressEvt <- Child.setDressSize(attire.dressSize)
+          footWearEvt <- Child.setFootwearSize(attire.footwearSize)
+        yield Vector(shortEvt, tShirtEvt, dressEvt, footWearEvt)
+    }
+    (nchild, evts) = modifications.run(child).value
+    _ <- evts.traverse(publish)
+  yield nchild
 
   def create(
       houseId: UUID,
@@ -95,7 +140,7 @@ object ApplicationDSL
       mother: Option[PersonalInformationModel],
       father: Option[PersonalInformationModel],
       nonPerson: Option[PersonalInformationModel],
-      relBen: List[PersonalInformationModel],
+      relBen: Vector[UUID],
       wear: Wear,
       photo: File
   ): ApplicationLanguage[Child] = for
@@ -107,7 +152,8 @@ object ApplicationDSL
         inf.birthdate
       )
     )
-    motherInf <- of(
+    existingMotherInf <- mother.flatTraverse(inf => findExistantPersonalInformation(inf.ci))
+    providedMotherInf <- of(
       mother
         .traverse(inf =>
           PersonalInformation(
@@ -118,7 +164,9 @@ object ApplicationDSL
           )
         )
     )
-    fatherInf <- of(
+    motherInf = existingMotherInf <+> providedMotherInf
+    existingFatherInf <- father.flatTraverse(inf => findExistantPersonalInformation(inf.ci))
+    providedFatherInf <- of(
       father
         .traverse(inf =>
           PersonalInformation(
@@ -129,7 +177,9 @@ object ApplicationDSL
           )
         )
     )
-    nonPersonInf <- of(
+    fatherInf = existingFatherInf <+> providedFatherInf
+    existingNonPersonInf <- nonPerson.flatTraverse(inf => findExistantPersonalInformation(inf.ci))
+    providedNonPersonInf <- of(
       nonPerson
         .traverse(inf =>
           PersonalInformation(
@@ -140,23 +190,14 @@ object ApplicationDSL
           )
         )
     )
-    relatedBeneficiaries <- of(
-      relBen
-        .traverse(inf =>
-          PersonalInformation(
-            inf.ci,
-            inf.name,
-            inf.lastname,
-            inf.birthdate
-          )
-        )
-    )
+    nonPersonInf = existingNonPersonInf <+> providedNonPersonInf
+    relatedBeneficiaries <- relBen.traverse(getChild)
     childInf = ChildInformation(
       information,
       fatherInf,
       motherInf,
       nonPersonInf,
-      relatedBeneficiaries.map(i => (i.ci, i)).toMap,
+      relatedBeneficiaries.map(_.getID),
       photo
     )
     (child, event) = wear match {

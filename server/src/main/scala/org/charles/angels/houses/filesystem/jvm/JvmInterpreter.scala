@@ -23,11 +23,11 @@ import fs2.Pure
 
 case object ImageNotFoundError extends Throwable("Image not found")
 
-class JvmInterpreter[F[_]: Async](basePath: String)
+class JvmInterpreter[F[_]: Async](basePath: Path)
     extends (FilesystemAction ~> F):
   private def interpret[A](fsaction: FilesystemAction[A]): F[A] = fsaction match
     case FilesystemAction.CreateFile(contents, name) =>
-      val path = Path(f"$basePath/$name")
+      val path = basePath / Path(name)
       val createDir = path.parent.toOptionT
         .semiflatMap(Files[F].createDirectory)
       val createFile =
@@ -60,17 +60,26 @@ class JvmInterpreter[F[_]: Async](basePath: String)
           }.pure[F],
           ImageNotFoundError.raiseError
         )
-    case FilesystemAction.Resolve(name) => f"$basePath/$name".pure[F]
+    case FilesystemAction.Resolve(name) => {
+      val path = basePath / Path(name)
+
+      path.toString.pure[F]
+    }
     case FilesystemAction.CreateFileWithStreamedContents(name) =>
-      val path = f"$basePath/$name"
+      val path = basePath / Path(name)
       new WriteStream {
         def apply[G[_]: Async](contents: Stream[G, Byte]) =
           contents
-            .through(Files[G].writeAll(Path(path)))
+            .through(Files[G].writeAll(path, Flags.Write))
             .compile
             .drain
-            .as(File(path))
+            .as(File(path.toString))
       }.pure[F]
+    case FilesystemAction.MoveFile(file, name) =>
+      val previousPath = Path(file.getAbsolutePath)
+      val newPath = basePath / Path(name)
+
+      Files[F].move(previousPath, newPath).as(File(newPath.toString)).attempt
 
   def apply[A](fsaction: FilesystemAction[A]): F[A] =
     interpret(fsaction).adaptErr(ServerError.FilesystemError(_))
@@ -78,4 +87,10 @@ class JvmInterpreter[F[_]: Async](basePath: String)
 class JVM(val basePath: String)
 
 given [F[_]: Async]: Make[F, JVM] with
-  def make(jvm: JVM) = JvmInterpreter[F](jvm.basePath).pure[Resource[F, _]]
+  def make(jvm: JVM) = Resource.eval {
+    for
+      path <- Path(jvm.basePath).pure
+      dirExists <- Files[F].exists(path)
+      _ <- if (!dirExists) Files[F].createDirectory(path) else ().pure
+    yield JvmInterpreter[F](path)
+  }

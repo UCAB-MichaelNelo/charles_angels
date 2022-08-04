@@ -63,7 +63,7 @@ given [F[_]: Async]: Make[F, DatabaseAction, Sql] with
   def make(sql: Sql) = for
     tp <- Resource.eval {
       Async[F].delay(
-        ExecutionContext.fromExecutorService(Executors.newWorkStealingPool(32))
+        ExecutionContext.fromExecutorService(Executors.newWorkStealingPool(8))
       )
     }
     transactor <- HikariTransactor.newHikariTransactor[F](

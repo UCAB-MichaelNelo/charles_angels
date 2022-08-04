@@ -9,18 +9,18 @@ final case class ChildInformation(
     father: Option[PersonalInformation],
     mother: Option[PersonalInformation],
     nonParent: Option[PersonalInformation],
-    relatedBeneficiaries: Map[Int, PersonalInformation],
+    relatedBeneficiaries: Vector[UUID],
     photo: File
 ) {
   def setInformation(personalInformation: PersonalInformation) =
     copy(information = personalInformation)
-  def setFatherInformation(fatherInf: PersonalInformation) =
-    copy(father = fatherInf.some)
-  def setMotherInformation(motherInf: PersonalInformation) =
-    copy(mother = motherInf.some)
-  def setNonParentRepresentativeInformation(repInf: PersonalInformation) =
-    copy(nonParent = repInf.some)
-  def setRelatedBeneficiaries(relBen: Map[Int, PersonalInformation]) =
+  def setFatherInformation(fatherInf: Option[PersonalInformation]) =
+    copy(father = fatherInf)
+  def setMotherInformation(motherInf: Option[PersonalInformation]) =
+    copy(mother = motherInf)
+  def setNonParentRepresentativeInformation(repInf: Option[PersonalInformation]) =
+    copy(nonParent = repInf)
+  def setRelatedBeneficiaries(relBen: Vector[UUID]) =
     copy(relatedBeneficiaries = relBen)
   def setPhoto(img: File) = copy(photo = img)
 }

@@ -16,6 +16,7 @@ enum FilesystemAction[A]:
   case GetFileContents(path: String) extends FilesystemAction[GetStream]
   case CreateFileWithStreamedContents(name: String)
       extends FilesystemAction[WriteStream]
+  case MoveFile(file: File, newName: String) extends FilesystemAction[Either[Throwable, File]]
 
 trait FilesystemLanguage[F[_]](using InjectK[FilesystemAction[_], F]) {
   def resolve(name: String): CompilerLanguage[F, String] = EitherT.liftF(Free.liftInject(FilesystemAction.Resolve(name)))
@@ -48,6 +49,12 @@ trait FilesystemLanguage[F[_]](using InjectK[FilesystemAction[_], F]) {
     EitherT.right(
       Free.liftInject(
         FilesystemAction.CreateFileWithStreamedContents(name)
+      )
+    )
+  def moveFile(file: File, name: String): CompilerLanguage[F, File] =
+    EitherT(
+      Free.liftInject(
+        FilesystemAction.MoveFile(file, name)
       )
     )
 }

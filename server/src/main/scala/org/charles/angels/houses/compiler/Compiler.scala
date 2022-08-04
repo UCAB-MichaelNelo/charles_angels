@@ -11,7 +11,6 @@ import org.charles.angels.houses.application.queries.QueryAction
 import org.charles.angels.houses.application.events.DomainEventAction
 import org.charles.angels.houses.domain.events.HouseEvent
 import org.charles.angels.houses.domain.events.ContactEvent
-import org.charles.angels.houses.domain.events.ScheduleEvent
 import org.charles.angels.people.application.queries.QueryAction as PeopleQueryAction
 import org.charles.angels.people.application.events.EventAction as PeopleEventAction
 import org.charles.angels.people.domain.events.ChildEvent
@@ -27,11 +26,10 @@ object Compiler extends (ApplicationAction ~> ServerLanguage):
 
   private object HouseQueryCompiler extends (QueryAction ~> ServerLanguage):
     def apply[A](queryAction: QueryAction[A]) = queryAction match
-      case QueryAction.GetAllContactCI    => CompilerDSL.getAllContactCI
+      case QueryAction.GetAllContacts     => CompilerDSL.getAllContacts
       case QueryAction.DoesRIFExists(rif) => CompilerDSL.doesRifExist(rif)
       case QueryAction.GetAllHouses       => CompilerDSL.getAllHouses
       case QueryAction.GetHouse(id)       => CompilerDSL.findHouse(id)
-      case QueryAction.GetSchedule(id)    => CompilerDSL.findSchedule(id)
       case QueryAction.GetContact(id)     => CompilerDSL.findContact(id)
 
   private object HouseEventCompiler
@@ -53,7 +51,8 @@ object Compiler extends (ApplicationAction ~> ServerLanguage):
                 currentGirlsHelped,
                 currentBoysHelped,
                 contactCI,
-                scheduleId
+                scheduleStartTime,
+                scheduleEndTime
               )
             ) =>
           CompilerDSL.registerHouse(
@@ -70,7 +69,8 @@ object Compiler extends (ApplicationAction ~> ServerLanguage):
             currentGirlsHelped,
             currentBoysHelped,
             contactCI,
-            scheduleId
+            scheduleStartTime,
+            scheduleEndTime
           )
         case DomainEventAction.NotifyHouseEvent(
               HouseEvent.ImageUpdated(id, file)
@@ -84,6 +84,10 @@ object Compiler extends (ApplicationAction ~> ServerLanguage):
               HouseEvent.RIFUpdated(id, rif)
             ) =>
           CompilerDSL.updateRIFOfHouse(id, rif)
+        case DomainEventAction.NotifyHouseEvent(
+              HouseEvent.AddressUpdated(id, address)
+            ) =>
+            CompilerDSL.updateAddressOfHouse(id, address)
         case DomainEventAction.NotifyHouseEvent(
               HouseEvent.PhoneAdded(id, phone)
             ) =>
@@ -109,7 +113,7 @@ object Compiler extends (ApplicationAction ~> ServerLanguage):
             ) =>
           CompilerDSL.updateMinimumAgeOfHouse(id, minimumAge)
         case DomainEventAction.NotifyHouseEvent(
-              HouseEvent.MaximumAgeUpdateed(id, maximumAge)
+              HouseEvent.MaximumAgeUpdated(id, maximumAge)
             ) =>
           CompilerDSL.updateMaximumAgeOfHouse(id, maximumAge)
         case DomainEventAction.NotifyHouseEvent(
@@ -119,11 +123,22 @@ object Compiler extends (ApplicationAction ~> ServerLanguage):
         case DomainEventAction.NotifyHouseEvent(
               HouseEvent.CurrentBoysHelpedUpdated(id, currentBoysHelped)
             ) =>
-          CompilerDSL.updateMaximumAgeOfHouse(id, currentBoysHelped)
+          CompilerDSL.updateCurrentBoysHelpedOfHouse(id, currentBoysHelped)
+        case DomainEventAction.NotifyHouseEvent(
+            HouseEvent.ScheduleStartTimeUpdated(id, startTime)
+          ) => 
+            CompilerDSL.updateStartScheduleTime(id, startTime)
+        case DomainEventAction.NotifyHouseEvent(
+            HouseEvent.ScheduleEndTimeUpdated(id, endTime)
+          ) =>
+            CompilerDSL.updateScheduleEndTime(id, endTime)
         case DomainEventAction.NotifyHouseEvent(
               HouseEvent.HouseDeleted(id)
             ) =>
           CompilerDSL.eliminateHouse(id).void
+        case DomainEventAction.NotifyHouseEvent(
+            HouseEvent.HouseContactCIUpdated(id, ci)
+          ) => CompilerDSL.updateContactCIOfHouse(id, ci)
         case DomainEventAction.NotifyContactEvent(
               ContactEvent.ContactCreated(
                 ci,
@@ -153,82 +168,17 @@ object Compiler extends (ApplicationAction ~> ServerLanguage):
               ContactEvent.ContactDeleted(ci)
             ) =>
           CompilerDSL.eliminateContact(ci).void
-        case DomainEventAction.NotifyScheduleEvent(
-              ScheduleEvent.ScheduleCreated(
-                id,
-                monday,
-                tuesday,
-                wednesday,
-                thursday,
-                friday
-              )
-            ) =>
-          CompilerDSL.registerSchedule(
-            id,
-            monday,
-            tuesday,
-            wednesday,
-            thursday,
-            friday
-          )
-        case DomainEventAction.NotifyScheduleEvent(
-              ScheduleEvent.BlockAdded(id, day, key, startTime, duration)
-            ) =>
-          CompilerDSL.addBlockToSchedule(id, day, key, startTime, duration)
-        case DomainEventAction.NotifyScheduleEvent(
-              ScheduleEvent.BlockRemoved(id, day, key)
-            ) =>
-          CompilerDSL.removeBlockOfSchedule(id, day, key)
-        case DomainEventAction.NotifyScheduleEvent(
-              ScheduleEvent.StartHourUpdatedOnBlock(id, day, key, startHour)
-            ) =>
-          CompilerDSL.updateStartHourOnBlockOfSchedule(id, day, key, startHour)
-        case DomainEventAction.NotifyScheduleEvent(
-              ScheduleEvent.StartMinuteUpdatedOnBlock(id, day, key, startMinute)
-            ) =>
-          CompilerDSL.updateStartMinuteOnBlockOfSchedule(
-            id,
-            day,
-            key,
-            startMinute
-          )
-        case DomainEventAction.NotifyScheduleEvent(
-              ScheduleEvent.DurationHoursUpdatedOnBlock(
-                id,
-                day,
-                key,
-                durationHours
-              )
-            ) =>
-          CompilerDSL.updateDurationHoursOnBlockOfSchedule(
-            id,
-            day,
-            key,
-            durationHours
-          )
-        case DomainEventAction.NotifyScheduleEvent(
-              ScheduleEvent.DurationMinutesUpdatedOnBlock(
-                id,
-                day,
-                key,
-                durationMinutes
-              )
-            ) =>
-          CompilerDSL.updateDurationMinutesOnBlockOfSchedule(
-            id,
-            day,
-            key,
-            durationMinutes
-          )
-        case DomainEventAction.NotifyScheduleEvent(
-              ScheduleEvent.ScheduleDeleted(id)
-            ) =>
-          CompilerDSL.eliminateSchedule(id).void
 
   // People compiler
   object PeopleQueryCompiler extends (PeopleQueryAction ~> ServerLanguage) {
     def apply[A](action: PeopleQueryAction[A]) = action match {
       case PeopleQueryAction.GetChild(id) => CompilerDSL.findChild(id)
+      case PeopleQueryAction.GetChildrenOfHouse(houseId) => CompilerDSL.getAllChildrenOfHouse(houseId)
+      case PeopleQueryAction.FindExistantPersonalInformation(ci) => CompilerDSL.getPersonalInformation(ci)
+      case PeopleQueryAction.GetAllExistantPersonalInformation => CompilerDSL.getAllPersonalInformation
+      case PeopleQueryAction.DoesChildCiExist(ci) => CompilerDSL.doesChidlCiExist(ci)
+      case PeopleQueryAction.GetChildrenPersonalInformation => CompilerDSL.getChildrenPersonalInformation
+      case PeopleQueryAction.GetChildrenWithoutHousing => CompilerDSL.getChildrenWithoutHousing
     }
   }
 
@@ -243,29 +193,28 @@ object Compiler extends (ApplicationAction ~> ServerLanguage):
           ) =>
         CompilerDSL.updatePersonalInformation(ci, pi, isOfChild)
       case PeopleEventAction.Publish(
-            ChildEvent.FatherInformationUpdated(ci, pi)
+            ChildEvent.FatherInformationUpdated(id, ci)
           ) =>
-        CompilerDSL.updatePersonalInformation(ci, pi, false)
+        CompilerDSL.setFatherCIToChild(id, ci)
       case PeopleEventAction.Publish(
-            ChildEvent.MotherInformationUpdated(ci, pi)
+            ChildEvent.MotherInformationUpdated(id, ci)
           ) =>
-        CompilerDSL.updatePersonalInformation(ci, pi, false)
+        CompilerDSL.setMotherCIToChild(id, ci)
       case PeopleEventAction.Publish(
-            ChildEvent.NonParentInformationUpdated(ci, pi)
+            ChildEvent.NonParentInformationUpdated(id, ci)
           ) =>
-        CompilerDSL.updatePersonalInformation(ci, pi, false)
+        CompilerDSL.setTutorCIToChild(id, ci)
       case PeopleEventAction.Publish(
-            ChildEvent.RelatedBeneficiaryAdded(pi)
+            ChildEvent.RelatedBeneficiaryAdded(id, bid)
           ) =>
-        CompilerDSL.savePersonalInformation(pi)
+        CompilerDSL.info(f"Agregando beneficiario relacionado") >> 
+        CompilerDSL.addRelatedBeneficiary(id, bid).onError {
+          case e => CompilerDSL.error(f"Error agregando beneficiario relacionado: $e")
+        }
       case PeopleEventAction.Publish(
-            ChildEvent.RelatedBeneficiaryRemoved(ci)
+            ChildEvent.RelatedBeneficiaryRemoved(id, bid)
           ) =>
-        CompilerDSL.deletePersonalInformation(ci)
-      case PeopleEventAction.Publish(
-            ChildEvent.RelatedBeneficiaryUpdated(ci, pi)
-          ) =>
-        CompilerDSL.updatePersonalInformation(ci, pi, false)
+        CompilerDSL.removeRelatedBeneficiary(id, bid)
       case PeopleEventAction.Publish(
             ChildEvent.PhotoUpdated(ci, img)
           ) =>

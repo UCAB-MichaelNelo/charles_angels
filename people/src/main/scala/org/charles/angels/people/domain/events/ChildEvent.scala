@@ -19,20 +19,19 @@ enum ChildEvent {
       isOfChild: Boolean = false
   )
   case FatherInformationUpdated(
-      ci: Int,
-      personalInformation: PersonalInformation
+      id: UUID,
+      ci: Option[Int]
   )
   case MotherInformationUpdated(
-      ci: Int,
-      personalInformation: PersonalInformation
+      id: UUID,
+      ci: Option[Int]
   )
   case NonParentInformationUpdated(
-      ci: Int,
-      personalInformation: PersonalInformation
+      id: UUID,
+      ci: Option[Int]
   )
-  case RelatedBeneficiaryAdded(information: PersonalInformation)
-  case RelatedBeneficiaryRemoved(ci: Int)
-  case RelatedBeneficiaryUpdated(ci: Int, information: PersonalInformation)
+  case RelatedBeneficiaryAdded(id: UUID, benId: UUID)
+  case RelatedBeneficiaryRemoved(id: UUID, benId: UUID)
   case PhotoUpdated(id: UUID, img: File)
   case AttireUpdated(id: UUID, wear: Wear)
   case BoyDeleted(id: UUID)

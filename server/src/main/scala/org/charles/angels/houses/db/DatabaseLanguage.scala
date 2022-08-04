@@ -37,11 +37,21 @@ trait DatabaseLanguage[F[_]](using
     with PeopleDatabaseLanguage[F]
     with RelationshipsDatabaseLanguage[F] {
 
+  def getAllChildrenOfHouse(houseId: UUID) = for
+    ids <- getChildrenOfHouse(houseId)
+    children <- ids.traverse(getChild)
+  yield children.flatMap(_.toList).toVector
+
+  def getChildrenWithoutHousing = for
+    children <- getAllChildren
+    childrenWithoutHousing <- children.flatTraverse { inf =>
+      getHouseHousingChild(inf.getID).map(_.tupleRight(inf).as(Vector.empty).getOrElse(Vector(inf))) 
+    }
+  yield childrenWithoutHousing 
+
   def registerChild(model: ChildModel, house: House) = for
     id <- storeChild(model.information, model.wear, model.id)
     () <- bindChildToHouse(house.id, model.id)
-    _ <- model.information.relatedBeneficiaries.keys.toList
-      .traverse(bindPersonToHouse(house.id, _))
   yield id
 
   def removeChild(id: UUID) = for
@@ -49,10 +59,7 @@ trait DatabaseLanguage[F[_]](using
     houseIdResult <- getHouseHousingChild(id)
     () <- childResult product houseIdResult match {
       case None => ().pure[CompilerLanguage[F, _]]
-      case Some((child, houseId)) =>
-        child.getInformation.relatedBeneficiaries.keys.toList
-          .traverse(unbindPersonFromHouse(_)) >>
-          unbindChildFromHouse(id)
+      case Some((child, houseId)) => unbindChildFromHouse(id)
     }
     () <- deleteChild(id)
   yield ()
@@ -62,11 +69,6 @@ trait DatabaseLanguage[F[_]](using
     () <- ids
       .traverse(unbindChildFromHouse)
       .void
-    children <- ids.traverse(getChild(_).map(_.toList)).map(_.flatten)
-    personIds = children.flatMap(
-      _.getInformation.relatedBeneficiaries.keys.toList
-    )
-    () <- personIds.traverse(unbindPersonFromHouse(_)).void
     house <- deleteHouse(id)
   yield house
 }

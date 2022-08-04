@@ -1,5 +1,7 @@
 package org.charles.angels.houses.application.models
 
+import java.time.LocalTime
+
 final case class HouseModel(
     filename: String,
     name: String,
@@ -13,5 +15,6 @@ final case class HouseModel(
     currentGirlsHelped: Int,
     currentBoysHelped: Int,
     contact: ContactModel,
-    schedule: ScheduleModel
+    scheduleStartTime: LocalTime,
+    scheduleEndTime: LocalTime
 )

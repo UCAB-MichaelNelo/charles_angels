@@ -19,12 +19,9 @@ import doobie.util.meta.Meta
 import org.charles.angels.houses.domain.Contact
 import java.time.LocalTime
 import scala.concurrent.duration.FiniteDuration
-import org.charles.angels.houses.domain.ScheduleBlock
-import org.charles.angels.houses.domain.Schedule
 import cats.data.Chain
 import doobie.util.fragment.Fragment
 import doobie.util.update.Update
-import org.charles.angels.houses.application.models.ScheduleModel
 import org.charles.angels.houses.errors.ServerError
 import cats.effect.kernel.Resource
 import scala.concurrent.ExecutionContext
@@ -63,37 +60,10 @@ class SqlExecutor[F[_]: Async](xa: Transactor[F])
       .attempt
       .transact(xa)
 
-  private def findSchedule(id: UUID) =
-    sql"""SELECT * FROM "schedules" WHERE id = $id ORDER BY "day", "key""""
-      .query[SqlExecutor.ScheduleModel]
-      .to[List]
-      .transact(xa)
-      .map { list =>
-        val days = list.groupBy(_.day).map { case (i, list) =>
-          (
-            i,
-            Chain.fromSeq(list.map(_.toScheduleBlock))
-          )
-        }
-        if (days.size == 0) None
-        else
-          Schedule
-            .unsafe(
-              id,
-              days.get(1).orEmpty,
-              days.get(2).orEmpty,
-              days.get(3).orEmpty,
-              days.get(4).orEmpty,
-              days.get(5).orEmpty
-            )
-            .some
-      }
-      .attempt
-
   private def interpret[A](action: DatabaseAction[A]): F[A] = action match {
-    case DatabaseAction.GetAllContactCI =>
-      sql"""SELECT ci FROM "contacts""""
-        .query[Int]
+    case DatabaseAction.GetAllContacts =>
+      sql"""SELECT * FROM "contacts""""
+        .query[Contact]
         .to[Vector]
         .transact(xa)
         .attempt
@@ -127,19 +97,20 @@ class SqlExecutor[F[_]: Async](xa: Transactor[F])
           currentGirlsHelped,
           currentBoysHelped,
           contactCI,
-          scheduleId
+          scheduleStartTime,
+          scheduleEndTime
         ) =>
       execute(sql"""INSERT INTO "houses"(
             id, img, name,
             rif, phones, address,
             max_shares, current_shares, minimum_age,
             maximum_age, current_girls_helped, current_boys_helped,
-            contact_ci, schedule_id
+            contact_ci, schedule_start_time, schedule_end_time
           ) VALUES (
             $id, ${img.getAbsolutePath}, $name, $rif,
             $phones, $address, $maxShares, $currentShares,
             $minimumAge, $maximumAge, $currentGirlsHelped,
-            $currentBoysHelped, $contactCI, $scheduleId
+            $currentBoysHelped, $contactCI, $scheduleStartTime, $scheduleEndTime
         )""")
     case DatabaseAction.UpdateImage(id, newImage) =>
       execute(
@@ -152,6 +123,10 @@ class SqlExecutor[F[_]: Async](xa: Transactor[F])
     case DatabaseAction.UpdateRIF(id, rif) =>
       execute(
         sql"""UPDATE "houses" SET "rif" = $rif WHERE id = $id"""
+      )
+    case DatabaseAction.UpdateAddress(id, address) =>
+      execute(
+        sql"""UPDATE "houses" SET "address" = $address WHERE id = $id"""
       )
     case DatabaseAction.AddPhone(id, newPhone) =>
       execute(
@@ -189,13 +164,24 @@ class SqlExecutor[F[_]: Async](xa: Transactor[F])
       execute(
         sql"""UPDATE "houses" SET "current_boys_helped" = $currentBoys WHERE id = $id"""
       )
+    case DatabaseAction.UpdateStartScheduleTime(id, startTime) => 
+      execute(
+        sql"""UPDATE "houses" SET "schedule_start_time" = $startTime WHERE id = $id"""
+      )
+    case DatabaseAction.UpdateEndingScheduleTime(id, endTime) => 
+      execute(
+        sql"""UPDATE "houses" SET "schedule_end_time" = $endTime WHERE id = $id"""
+      )
+    case DatabaseAction.UpdateContactCIOfHouse(id, ci) =>
+      execute(
+        sql"""UPDATE "houses" SET "contact_ci" = $ci WHERE id = $id"""
+      )
     case DatabaseAction.DeleteHouse(id) =>
       (for
         result <- findHouse(id).rethrow
         house <- result match
           case Some(house) =>
-            execute(sql"""DELETE WHERE id = $id FROM "houses""").rethrow
-              .as(house)
+            execute(sql"""DELETE FROM "houses" WHERE id = $id""").rethrow.as(house)
           case None => Exception(f"No se encontro CASA con ID: $id").raiseError
       yield house).attempt
     case DatabaseAction.GetContact(ci) => findContact(ci)
@@ -220,98 +206,11 @@ class SqlExecutor[F[_]: Async](xa: Transactor[F])
         result <- findContact(ci).rethrow
         contact <- result match
           case Some(contact) =>
-            execute(sql"""DELETE WHERE "ci" = $ci FROM "contacts""").rethrow
+            execute(sql"""DELETE WHERE "ci" = $ci FROM "contacts"""").rethrow
               .as(contact)
           case None =>
             Exception(f"No se encontro CONTACTO con CI: $ci").raiseError
       yield contact).attempt
-
-    case DatabaseAction.GetSchedule(id) => findSchedule(id)
-    case DatabaseAction.StoreSchedule(
-          id,
-          monday,
-          tuesday,
-          wednesday,
-          thursday,
-          friday
-        ) =>
-      Update[SqlExecutor.ScheduleTuple](
-        """INSERT INTO "schedules"(id, day, key, start_time, duration) VALUES (?, ?, ?, ?, ?)"""
-      )
-        .updateMany(
-          (monday.mapWithIndex((sb, i) =>
-            SqlExecutor.ScheduleModel(id, 1, i, sb.starts, sb.lasts).tuple
-          ) ++
-            tuesday.mapWithIndex((sb, i) =>
-              SqlExecutor.ScheduleModel(id, 2, i, sb.starts, sb.lasts).tuple
-            ) ++
-            wednesday.mapWithIndex((sb, i) =>
-              SqlExecutor.ScheduleModel(id, 3, i, sb.starts, sb.lasts).tuple
-            ) ++
-            thursday.mapWithIndex((sb, i) =>
-              SqlExecutor.ScheduleModel(id, 4, i, sb.starts, sb.lasts).tuple
-            ) ++
-            friday.mapWithIndex((sb, i) =>
-              SqlExecutor.ScheduleModel(id, 5, i, sb.starts, sb.lasts).tuple
-            ))
-        )
-        .transact(xa)
-        .void
-        .attempt
-    case DatabaseAction.AddBlock(id, day, key, startTime, duration) =>
-      execute(
-        sql"""INSERT INTO "schedules"(id, day, key, start_time, duration) VALUES ($id, $day, $key, $startTime, $duration)"""
-      )
-    case DatabaseAction.RemoveBlock(id, day, key) =>
-      execute(
-        sql"""DELETE FROM "schedules" WHERE id = $id AND day = $day AND key = $key""".update.run >>
-          sql"""UPDATE "schedules" SET key = key - 1 WHERE id = $id AND day = $day AND key > $key""".update.run
-      )
-    case DatabaseAction.UpdateStartHourOnBlock(id, day, key, newStartHour) =>
-      val localHour = LocalTime.of(newStartHour, 0)
-      execute(
-        sql"""UPDATE "schedules" SET start_time = $localHour + make_interval(mins => EXTRACT(MINUTE FROM start_time)::integer) WHERE id = $id AND day = $day AND key = $key"""
-      )
-    case DatabaseAction.UpdateStartMinuteOnBlock(
-          id,
-          day,
-          key,
-          newStartMinute
-        ) =>
-      val localMinute = LocalTime.of(0, newStartMinute)
-      execute(
-        sql"""UPDATE "schedules" SET start_time = $localMinute + make_interval(hours => EXTRACT(HOUR FROM start_time)::integer) WHERE id = $id AND day = $day AND key = $key"""
-      )
-    case DatabaseAction.UpdateDurationHoursOnBlock(
-          id,
-          day,
-          key,
-          durationHour
-        ) =>
-      val durationHourInSeconds = durationHour * 60 * 60
-      execute(
-        sql"""UPDATE "schedules" SET duration = $durationHourInSeconds + MOD(duration, 60) WHERE id = $id AND day = $day AND key = $key"""
-      )
-    case DatabaseAction.UpdateDurationMinutesOnBlock(
-          id,
-          day,
-          key,
-          durationMinute
-        ) =>
-      val durationMinuteInSeconds = durationMinute * 60
-      execute(
-        sql"""UPDATE "schedules" SET duration = $durationMinuteInSeconds + ((duration / 3600) * 3600) WHERE id = $id AND day = $day AND key = $key"""
-      )
-    case DatabaseAction.DeleteSchedule(id) =>
-      (for
-        result <- findSchedule(id).rethrow
-        schedule <- result match
-          case Some(schedule) =>
-            execute(sql"""DELETE FROM "schedules" WHERE id = $id""").rethrow
-              .as(schedule)
-          case None =>
-            Exception(s"No se encontro HORARIO con ID $id").raiseError
-      yield schedule).attempt
   }
 }
 
@@ -319,18 +218,6 @@ object SqlExecutor:
   given Meta[FiniteDuration] =
     Meta[Long].imap(FiniteDuration(_, "s"))(_.toSeconds)
 
-  type ScheduleTuple = (UUID, Int, Long, LocalTime, FiniteDuration)
-
-  private case class ScheduleModel(
-      id: UUID,
-      day: Int,
-      key: Int,
-      startingTime: LocalTime,
-      duration: FiniteDuration
-  ) {
-    def toScheduleBlock = ScheduleBlock.unsafe(startingTime, duration)
-    def tuple: ScheduleTuple = (id, day, key, startingTime, duration)
-  }
 
   private case class HouseModel(
       id: String,
@@ -346,7 +233,8 @@ object SqlExecutor:
       currentGirlsHelped: Int,
       currentBoysHelped: Int,
       contactCI: Int,
-      scheduleId: String
+      scheduleStartTime: LocalTime,
+      scheduleEndTime: LocalTime
   ) {
     def toHouse = House.unsafe(
       UUID.fromString(id),
@@ -356,13 +244,14 @@ object SqlExecutor:
       phones,
       address,
       contactCI,
-      UUID.fromString(scheduleId),
       maxShares,
       currentShares,
       minimumAge,
       maximumAge,
       currentGirlsHelped,
-      currentBoysHelped
+      currentBoysHelped,
+      scheduleStartTime,
+      scheduleEndTime
     )
   }
 
@@ -372,7 +261,7 @@ given [F[_]: Async]: Make[F, DatabaseAction, Sql] with
   def make(sql: Sql) = for
     tp <- Resource.eval {
       Async[F].delay(
-        ExecutionContext.fromExecutorService(Executors.newWorkStealingPool(32))
+        ExecutionContext.fromExecutorService(Executors.newWorkStealingPool(8))
       )
     }
     transactor <- HikariTransactor.newHikariTransactor[F](

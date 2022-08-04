@@ -110,8 +110,8 @@ object Child {
     }
   )
   private object Representative {
-    def father: Optional[Child, PersonalInformation] =
-      Optional(
+    def father: Lens[Child, Option[PersonalInformation]] =
+      Lens(
         (_: Child).getInformation.father
       )(pI =>
         c => {
@@ -121,8 +121,8 @@ object Child {
           c.setInformation(newCI)
         }
       )
-    def mother: Optional[Child, PersonalInformation] =
-      Optional(
+    def mother: Lens[Child, Option[PersonalInformation]] =
+      Lens(
         (_: Child).getInformation.mother
       )(pI =>
         c => {
@@ -132,8 +132,8 @@ object Child {
           c.setInformation(newCI)
         }
       )
-    def nonParent: Optional[Child, PersonalInformation] =
-      Optional(
+    def nonParent: Lens[Child, Option[PersonalInformation]] =
+      Lens(
         (_: Child).getInformation.nonParent
       )(pI =>
         c => {
@@ -145,7 +145,7 @@ object Child {
       )
 
   }
-  private def relatedBeneficiaries = Lens[Child, Map[Int, PersonalInformation]](
+  private def relatedBeneficiaries = Lens[Child, Vector[UUID]](
     (_: Child).getInformation.relatedBeneficiaries
   )(rb =>
     c => {
@@ -177,7 +177,10 @@ object Child {
           new Child.Boy(id, inf, attire)
         case (Wear.GirlWear(attire), Child.Girl(id, inf, _)) =>
           new Child.Girl(id, inf, attire)
-        case _ => c
+        case (Wear.BoyWear(attire), Child.Girl(id, inf, _)) =>
+          new Child.Boy(id, inf, attire)
+        case (Wear.GirlWear(attire), Child.Boy(id, inf, _)) =>
+          new Child.Girl(id, inf, attire)
       }
   )
 
@@ -186,17 +189,19 @@ object Child {
     _ <- State.modify(update)
     pI <- State.inspect(information.get)
   yield ChildEvent.PersonalInformationUpdated(ci, pI, true)
+
   private def updateInformationWith(
-      inf: PersonalInformation,
-      lens: Optional[Child, PersonalInformation],
-      event: (Int, PersonalInformation) => ChildEvent
+      inf: Option[PersonalInformation],
+      lens: Lens[Child, Option[PersonalInformation]],
+      event: (UUID, Option[Int]) => ChildEvent
   ) = for
-    ci <- State.inspect[Child, Option[Int]](c => lens.getOption(c).map(_.ci))
+    ci <- State.inspect[Child, Option[Int]](c => lens.get(c).map(_.ci))
+    id <- State.inspect[Child, UUID](_.getID)
     _ <- State.modify(lens.set(inf))
     pI <- State.inspect[Child, Option[PersonalInformation]](
       information.getOption
     )
-  yield event(ci getOrElse inf.ci, inf)
+  yield event(id, inf.map(_.ci))
   private def updateAttire(
       update: Child => Child,
       event: (UUID, Wear) => ChildEvent
@@ -210,36 +215,34 @@ object Child {
 
   def setChildInformation(inf: PersonalInformation) =
     updateInformation(information.set(inf))
-  def setFatherInformation(inf: PersonalInformation) =
+  def setFatherInformation(inf: Option[PersonalInformation]) =
     updateInformationWith(
       inf,
       Representative.father,
       ChildEvent.FatherInformationUpdated.apply
     )
-  def setMotherInformation(inf: PersonalInformation) =
+  def setMotherInformation(inf: Option[PersonalInformation]) =
     updateInformationWith(
       inf,
       Representative.mother,
       ChildEvent.MotherInformationUpdated.apply
     )
-  def setNonParentInformation(inf: PersonalInformation) =
+  def setNonParentInformation(inf: Option[PersonalInformation]) =
     updateInformationWith(
       inf,
       Representative.nonParent,
       ChildEvent.NonParentInformationUpdated.apply
     )
-  def addRelatedBeneficiary(benInf: PersonalInformation) =
+  def addRelatedBeneficiary(benId: UUID) =
     State
-      .modify(relatedBeneficiaries.modify(_.updated(benInf.ci, benInf)))
-      .as(ChildEvent.RelatedBeneficiaryAdded(benInf))
-  def removeRelatedBeneficiary(ci: Int) =
+      .modify(relatedBeneficiaries.modify(_.appended(benId)))
+      .get
+      .map(child => ChildEvent.RelatedBeneficiaryAdded(child.getID, benId))
+  def removeRelatedBeneficiary(benId: UUID) =
     State
-      .modify(relatedBeneficiaries.modify(_.removed(ci)))
-      .as(ChildEvent.RelatedBeneficiaryRemoved(ci))
-  def updateRelatedBeneficiary(ci: Int, inf: PersonalInformation) =
-    State
-      .modify(relatedBeneficiaries.modify(_.updatedWith(ci) { _.as(inf) }))
-      .as(ChildEvent.RelatedBeneficiaryUpdated(ci, inf))
+      .modify(relatedBeneficiaries.modify(_.filterNot(_ == benId)))
+      .get
+      .map(child => ChildEvent.RelatedBeneficiaryRemoved(child.getID, benId))
   def setPhoto(img: File) =
     State
       .modify(photo.set(img))

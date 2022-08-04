@@ -57,14 +57,15 @@ lazy val server = project
     name := "Charles Angels' Houses Server",
     scalacOptions += "-source:future",
     scalacOptions += "-Ykind-projector:underscores",
+    mainClass := Some("org.charles.angels.houses.server.Main"),
     libraryDependencies ++= Seq(
       "org.http4s" %% "http4s-ember-server" % Http4sVersion,
       "org.http4s" %% "http4s-ember-client" % Http4sVersion,
       "org.http4s" %% "http4s-circe" % Http4sVersion,
       "org.http4s" %% "http4s-dsl" % Http4sVersion,
       "io.circe" %% "circe-generic" % CirceVersion,
-      "io.github.kirill5k" %% "mongo4cats-core" % "0.4.7",
-      "io.github.kirill5k" %% "mongo4cats-circe" % "0.4.7",
+      "io.circe" %% "circe-parser" % CirceVersion,
+      "io.github.vigoo" %% "prox-fs2-3" % "0.7.3",
       "org.typelevel" %% "cats-kernel" % "2.7.0",
       "org.typelevel" %% "cats-core" % "2.7.0",
       "org.typelevel" %% "cats-free" % "2.7.0",
@@ -78,10 +79,15 @@ lazy val server = project
       "org.tpolecat" %% "doobie-postgres" % "1.0.0-RC1",
       "org.postgresql" % "postgresql" % "42.2.16",
       "org.typelevel" %% "shapeless3-deriving" % "3.0.1",
+      "com.lihaoyi" %% "scalatags" % "0.11.1",
+      "is.cir" %% "ciris" % "2.3.3",
+      "com.github.pureconfig" %% "pureconfig-core" % "0.17.1",
+      "io.github.jmcardon" %% "tsec-http4s" % "0.4.0",
       "org.scalameta" %% "munit" % "0.7.29" % Test,
       "org.scalameta" %% "munit-scalacheck" % "0.7.29" % Test
     )
   )
+  .enablePlugins(JavaAppPackaging)
   .dependsOn(houses, people)
 
 // lazy val client = project

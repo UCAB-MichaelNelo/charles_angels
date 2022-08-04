@@ -1,21 +1,19 @@
 package org.charles.angels.houses.db.houses
 
-import org.charles.angels.houses.compiler.CompilerLanguage
 import java.util.UUID
 import java.io.File
 import cats.data.Chain
-import org.charles.angels.houses.domain.ScheduleBlock
+
 import java.time.LocalTime
 import scala.concurrent.duration.FiniteDuration
 import org.charles.angels.houses.domain.House
 import org.charles.angels.houses.domain.Contact
-import org.charles.angels.houses.domain.Schedule
 import cats.InjectK
 import cats.data.EitherT
 import cats.free.Free
+import org.charles.angels.houses.compiler.CompilerLanguage
 
 enum DatabaseAction[A]:
-  case GetAllContactCI extends DatabaseAction[Either[Throwable, Vector[Int]]]
   case DoesRifExist(rif: Int) extends DatabaseAction[Either[Throwable, Option[Int]]]
   case GetAllHouses extends DatabaseAction[Either[Throwable, Vector[House]]]
   case StoreHouse(
@@ -32,13 +30,16 @@ enum DatabaseAction[A]:
       currentGirlsHelped: Int,
       currentBoysHelped: Int,
       contactCI: Int,
-      scheduleId: UUID
+      scheduleStartTime: LocalTime,
+      scheduleEndTime: LocalTime
   ) extends DatabaseAction[Either[Throwable, Unit]]
   case UpdateImage(id: UUID, newImg: File)
       extends DatabaseAction[Either[Throwable, Unit]]
   case UpdateName(id: UUID, name: String)
       extends DatabaseAction[Either[Throwable, Unit]]
   case UpdateRIF(id: UUID, rif: Int)
+      extends DatabaseAction[Either[Throwable, Unit]]
+  case UpdateAddress(id: UUID, address: String)
       extends DatabaseAction[Either[Throwable, Unit]]
   case AddPhone(id: UUID, phone: String)
       extends DatabaseAction[Either[Throwable, Unit]]
@@ -84,61 +85,26 @@ enum DatabaseAction[A]:
   case DeleteContact(
       ci: Int
   ) extends DatabaseAction[Either[Throwable, Contact]]
-  case StoreSchedule(
+  case UpdateStartScheduleTime(
       id: UUID,
-      monday: Chain[ScheduleBlock],
-      tuesday: Chain[ScheduleBlock],
-      wednesday: Chain[ScheduleBlock],
-      thursday: Chain[ScheduleBlock],
-      friday: Chain[ScheduleBlock]
+      startTime: LocalTime
   ) extends DatabaseAction[Either[Throwable, Unit]]
-  case AddBlock(
+  case UpdateEndingScheduleTime(
       id: UUID,
-      day: Int,
-      key: Long,
-      startTime: LocalTime,
-      duration: FiniteDuration
+      endTime: LocalTime
   ) extends DatabaseAction[Either[Throwable, Unit]]
-  case RemoveBlock(
-      id: UUID,
-      day: Int,
-      key: Int
+  case UpdateContactCIOfHouse(
+    id: UUID,
+    ci: Int
   ) extends DatabaseAction[Either[Throwable, Unit]]
-  case UpdateStartHourOnBlock(
-      id: UUID,
-      day: Int,
-      key: Int,
-      newStartHour: Int
-  ) extends DatabaseAction[Either[Throwable, Unit]]
-  case UpdateStartMinuteOnBlock(
-      id: UUID,
-      day: Int,
-      key: Int,
-      newStartMinute: Int
-  ) extends DatabaseAction[Either[Throwable, Unit]]
-  case UpdateDurationHoursOnBlock(
-      id: UUID,
-      day: Int,
-      key: Int,
-      newDurationHours: Int
-  ) extends DatabaseAction[Either[Throwable, Unit]]
-  case UpdateDurationMinutesOnBlock(
-      id: UUID,
-      day: Int,
-      key: Int,
-      newDurationMinutes: Int
-  ) extends DatabaseAction[Either[Throwable, Unit]]
-  case DeleteSchedule(id: UUID)
-      extends DatabaseAction[Either[Throwable, Schedule]]
   case GetHouse(id: UUID)
       extends DatabaseAction[Either[Throwable, Option[House]]]
   case GetContact(ci: Int)
       extends DatabaseAction[Either[Throwable, Option[Contact]]]
-  case GetSchedule(id: UUID)
-      extends DatabaseAction[Either[Throwable, Option[Schedule]]]
+  case GetAllContacts
+      extends DatabaseAction[Either[Throwable, Vector[Contact]]]
 
 trait DatabaseLanguage[F[_]](using InjectK[DatabaseAction, F]):
-  def getAllContactCI = EitherT(Free.liftInject(DatabaseAction.GetAllContactCI))
   def doesRifExist(rif: Int) = EitherT(
     Free.liftInject(DatabaseAction.DoesRifExist(rif))
   )
@@ -160,7 +126,8 @@ trait DatabaseLanguage[F[_]](using InjectK[DatabaseAction, F]):
       currentGirlsHelped: Int,
       currentBoysHelped: Int,
       contactCI: Int,
-      scheduleId: UUID
+      scheduleStartTime: LocalTime,
+      scheduleEndTime: LocalTime
   ): CompilerLanguage[F, Unit] = EitherT(
     Free.liftInject(
       DatabaseAction.StoreHouse(
@@ -177,7 +144,8 @@ trait DatabaseLanguage[F[_]](using InjectK[DatabaseAction, F]):
         currentGirlsHelped,
         currentBoysHelped,
         contactCI,
-        scheduleId
+        scheduleStartTime,
+        scheduleEndTime
       )
     )
   )
@@ -186,6 +154,9 @@ trait DatabaseLanguage[F[_]](using InjectK[DatabaseAction, F]):
   )
   def updateName(id: UUID, name: String): CompilerLanguage[F, Unit] = EitherT(
     Free.liftInject(DatabaseAction.UpdateName(id, name))
+  )
+  def updateAddress(id: UUID, address: String): CompilerLanguage[F, Unit] = EitherT(
+    Free.liftInject(DatabaseAction.UpdateAddress(id, address))
   )
   def updateRIF(id: UUID, rif: Int): CompilerLanguage[F, Unit] = EitherT(
     Free.liftInject(DatabaseAction.UpdateRIF(id, rif))
@@ -225,7 +196,7 @@ trait DatabaseLanguage[F[_]](using InjectK[DatabaseAction, F]):
   ): CompilerLanguage[F, Unit] = EitherT(
     Free.liftInject(DatabaseAction.UpdateMaximumAge(id, newMaximumAge))
   )
-  def updateCurrentGirlsHelperd(
+  def updateCurrentGirlsHelped(
       id: UUID,
       newCurrentGirlsHelped: Int
   ): CompilerLanguage[F, Unit] = EitherT(
@@ -241,12 +212,24 @@ trait DatabaseLanguage[F[_]](using InjectK[DatabaseAction, F]):
       DatabaseAction.UpdateCurrentBoysHelped(id, newCurrentBoysHelped)
     )
   )
+  def setContactCIOfHouse(
+    id: UUID,
+    ci: Int
+  ): CompilerLanguage[F, Unit] = EitherT(Free.liftInject(DatabaseAction.UpdateContactCIOfHouse(id, ci)))
   def deleteHouse(id: UUID): CompilerLanguage[F, House] = EitherT(
     Free.liftInject(DatabaseAction.DeleteHouse(id))
   )
-
+  def updateStartScheduleTime(id: UUID, startTime: LocalTime): CompilerLanguage[F, Unit] = EitherT(
+    Free.liftInject(DatabaseAction.UpdateStartScheduleTime(id, startTime))
+  )
+  def updateEndingScheduleTime(id: UUID, endTime: LocalTime): CompilerLanguage[F, Unit] = EitherT(
+    Free.liftInject(DatabaseAction.UpdateEndingScheduleTime(id, endTime))
+  ) 
   def getContact(ci: Int): CompilerLanguage[F, Option[Contact]] = EitherT(
     Free.liftInject(DatabaseAction.GetContact(ci))
+  )
+  def getAllContacts: CompilerLanguage[F, Vector[Contact]] = EitherT(
+    Free.liftInject(DatabaseAction.GetAllContacts)
   )
   def storeContact(
       ci: Int,
@@ -271,92 +254,4 @@ trait DatabaseLanguage[F[_]](using InjectK[DatabaseAction, F]):
   )
   def deleteContact(ci: Int): CompilerLanguage[F, Contact] = EitherT(
     Free.liftInject(DatabaseAction.DeleteContact(ci))
-  )
-
-  def getSchedule(id: UUID): CompilerLanguage[F, Option[Schedule]] = EitherT(
-    Free.liftInject(DatabaseAction.GetSchedule(id))
-  )
-  def storeSchedule(
-      id: UUID,
-      monday: Chain[ScheduleBlock],
-      tuesday: Chain[ScheduleBlock],
-      wednesday: Chain[ScheduleBlock],
-      thursday: Chain[ScheduleBlock],
-      friday: Chain[ScheduleBlock]
-  ): CompilerLanguage[F, Unit] = EitherT(
-    Free.liftInject(
-      DatabaseAction.StoreSchedule(
-        id,
-        monday,
-        tuesday,
-        wednesday,
-        thursday,
-        friday
-      )
-    )
-  )
-  def addBlock(
-      id: UUID,
-      day: Int,
-      key: Long,
-      startTime: LocalTime,
-      duration: FiniteDuration
-  ): CompilerLanguage[F, Unit] = EitherT(
-    Free.liftInject(DatabaseAction.AddBlock(id, day, key, startTime, duration))
-  )
-  def removeBlock(
-      id: UUID,
-      day: Int,
-      key: Int
-  ): CompilerLanguage[F, Unit] = EitherT(
-    Free.liftInject(DatabaseAction.RemoveBlock(id, day, key))
-  )
-  def updateStartHourOnBlock(
-      id: UUID,
-      day: Int,
-      key: Int,
-      newStartHour: Int
-  ): CompilerLanguage[F, Unit] = EitherT(
-    Free.liftInject(
-      DatabaseAction.UpdateStartHourOnBlock(id, day, key, newStartHour)
-    )
-  )
-  def updateStartMinuteOnBlock(
-      id: UUID,
-      day: Int,
-      key: Int,
-      newStartMinute: Int
-  ): CompilerLanguage[F, Unit] = EitherT(
-    Free.liftInject(
-      DatabaseAction.UpdateStartMinuteOnBlock(id, day, key, newStartMinute)
-    )
-  )
-  def updateDurationHoursOnBlock(
-      id: UUID,
-      day: Int,
-      key: Int,
-      newDurationHours: Int
-  ): CompilerLanguage[F, Unit] = EitherT(
-    Free.liftInject(
-      DatabaseAction.UpdateDurationHoursOnBlock(id, day, key, newDurationHours)
-    )
-  )
-  def updateDurationMinutesOnBlock(
-      id: UUID,
-      day: Int,
-      key: Int,
-      newDurationMinutes: Int
-  ): CompilerLanguage[F, Unit] = EitherT(
-    Free
-      .liftInject(
-        DatabaseAction.UpdateDurationMinutesOnBlock(
-          id,
-          day,
-          key,
-          newDurationMinutes
-        )
-      )
-  )
-  def deleteSchedule(id: UUID): CompilerLanguage[F, Schedule] = EitherT(
-    Free.liftInject(DatabaseAction.DeleteSchedule(id))
   )

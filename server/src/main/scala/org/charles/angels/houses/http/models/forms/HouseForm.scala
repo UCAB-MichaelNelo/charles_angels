@@ -8,6 +8,7 @@ import cats.data.EitherT
 import org.http4s.DecodeResult
 import fs2.Stream
 import cats.effect.std.Console
+import java.time.LocalTime
 
 final case class HouseForm(
     fileExtension: String,
@@ -20,5 +21,7 @@ final case class HouseForm(
     minimumAge: Int,
     maximumAge: Int,
     currentGirlsHelped: Int,
-    currentBoysHelped: Int
+    currentBoysHelped: Int,
+    scheduleStartTime: LocalTime,
+    scheduleEndTime: LocalTime
 )

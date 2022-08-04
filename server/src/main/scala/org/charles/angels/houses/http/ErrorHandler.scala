@@ -72,6 +72,12 @@ private given ErrorHandler[ServerLanguage] with
 
   private val handler
       : ServerError => ServerLanguage[Response[ServerLanguage]] = {
+    case ServerError.UnauthorizedAccess =>
+      CompilerDSL.warn("Tried to access protected route without being logged in") >>
+        Forbidden()
+    case ServerError.InvalidUserOrPassword =>
+      CompilerDSL.warn("Invalid credentials provided on login") >>
+        Response(Status.Unauthorized).pure[ServerLanguage]
     case ServerError.DatabaseError(e) =>
       CompilerDSL.error(
         s"ERROR DE BASE DE DATOS: ${e.getMessage}"

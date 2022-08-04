@@ -14,27 +14,29 @@ final case class AttireViewModel(
 )
 
 final case class ChildViewModel(
+    houseId: Option[UUID],
     id: UUID,
     sex: String,
     information: PersonalInformation,
     mother: Option[PersonalInformation],
     father: Option[PersonalInformation],
     nonParent: Option[PersonalInformation],
-    relBen: List[PersonalInformation],
+    relBen: Vector[UUID],
     attire: AttireViewModel
 )
 
 object ChildViewModel {
-  def apply(child: Child) = child match {
+  def apply(child: Child, houseId: Option[UUID] = None) = child match {
     case Child.Boy(id, ci, attire) =>
       new ChildViewModel(
+        houseId,
         id,
         "M",
         ci.information,
         ci.mother,
         ci.father,
         ci.nonParent,
-        ci.relatedBeneficiaries.values.toList,
+        ci.relatedBeneficiaries,
         AttireViewModel(
           attire.shortOrTrousersSize,
           attire.tshirtOrshirtSize,
@@ -45,13 +47,14 @@ object ChildViewModel {
       )
     case Child.Girl(id, ci, attire) =>
       new ChildViewModel(
+        houseId,
         id,
         "F",
         ci.information,
         ci.mother,
         ci.father,
         ci.nonParent,
-        ci.relatedBeneficiaries.values.toList,
+        ci.relatedBeneficiaries,
         AttireViewModel(
           attire.shortOrTrousersSize,
           attire.tshirtOrshirtSize,

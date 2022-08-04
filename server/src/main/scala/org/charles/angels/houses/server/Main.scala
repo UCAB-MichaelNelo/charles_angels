@@ -8,15 +8,6 @@ import cats.effect.IO
 import cats.effect.ExitCode
 import cats.effect.std.Console
 import org.charles.angels.houses.db.DatabaseExecutor
-import org.charles.angels.houses.db.houses.DatabaseAction as HousesDatabaseAction
-import org.charles.angels.houses.db.houses.sql.Sql as HousesSql
-import org.charles.angels.houses.db.houses.sql.given
-import org.charles.angels.houses.db.people.DatabaseAction as PeopleDatabaseAction
-import org.charles.angels.houses.db.people.sql.Sql as PeopleSql
-import org.charles.angels.houses.db.people.sql.given
-import org.charles.angels.houses.db.relationships.DatabaseAction as RelationshipsDatabaseAction
-import org.charles.angels.houses.db.relationships.sql.Sql as RelationshipsSql
-import org.charles.angels.houses.db.relationships.sql.given
 import org.charles.angels.houses.logging.LoggingExecutor
 import org.charles.angels.houses.logging.`scala-logging`.ScalaLogging
 import org.charles.angels.houses.logging.`scala-logging`.given
@@ -24,60 +15,61 @@ import org.charles.angels.houses.filesystem.FilesystemExecutor
 import org.charles.angels.houses.filesystem.jvm.JVM
 import org.charles.angels.houses.filesystem.jvm.given
 import org.charles.angels.houses.cron.CronExecutor
-import org.charles.angels.houses.cron.`cats-effect`.CatsEffectScheduler
-import org.charles.angels.houses.cron.`cats-effect`.given
+import org.charles.angels.houses.cron.ce.CatsEffectScheduler
+import org.charles.angels.houses.cron.ce.given
 import org.charles.angels.houses.notifications.NotificationExecutor
 import org.charles.angels.houses.notifications.fs2.Fs2
 import org.charles.angels.houses.notifications.fs2.given
-import org.charles.angels.houses.reports.mongodb.MongoDB
-import org.charles.angels.houses.reports.mongodb.given
 import org.charles.angels.houses.shared.Executor
 import org.charles.angels.houses.compiler.ApplicationLanguage
 import org.charles.angels.houses.compiler.Compiler
 import org.charles.angels.houses.compiler.ServerLanguage
 import org.charles.angels.houses.errors.ServerError
 import org.charles.angels.houses.http.HttpServer
-import cats.effect.kernel.Resource
 import org.charles.angels.houses.reports.ReportExecutor
+import org.charles.angels.houses.reports.ReportAction
+import org.charles.angels.houses.reports.data.sql.ExistingSqlTransactor
+import org.charles.angels.houses.reports.data.sql.given
+import org.charles.angels.houses.reports.template.scalatags.Scalatags
+import org.charles.angels.houses.reports.template.scalatags.given
+import cats.effect.kernel.Resource
+import org.charles.angels.houses.auth.AuthExecutor
+import org.charles.angels.houses.auth.environment.Environment
+import org.charles.angels.houses.auth.environment.given
+import org.charles.angels.houses.server.config.PureConfigLoader
 
 object Main extends IOApp {
-  private def executor = for
-    dbInterpreter <-
-      (
-        DatabaseExecutor[IO, HousesDatabaseAction](
-          HousesSql("charles-angels-admin", "charles-angels-admin-pw")
-        ),
-        DatabaseExecutor[IO, PeopleDatabaseAction](
-          PeopleSql("charles-angels-admin", "charles-angels-admin-pw")
-        ),
-        DatabaseExecutor[IO, RelationshipsDatabaseAction](
-          RelationshipsSql("charles-angels-admin", "charles-angels-admin-pw")
-        )
-      ).parMapN((humanExecutor, peopleExecutor, relationshipsExecutor) =>
-        relationshipsExecutor or (humanExecutor or peopleExecutor)
+  private def executor: Resource[IO, (Executor[IO], Int)] = for
+    config <- Resource.eval { PureConfigLoader.load[IO] }
+    (dbInterpreter, xa) <-
+      DatabaseExecutor.hikariSqlExecutor[IO](
+        config.database.driver,
+        config.database.url,
+        config.database.user,
+        config.database.password,
+        config.database.parallelismLevel
       )
     logInterpreter <- LoggingExecutor[IO](
       ScalaLogging(getClass().getPackage().toString)
     )
-    fsInterpreter <- FilesystemExecutor[IO](JVM("storage"))
-    (notificationStream, notificationInterpreter) <- NotificationExecutor[IO](
-      Fs2()
-    )
-    mongoInterpreter <- ReportExecutor[IO](MongoDB("localhost", 27017))
+    fsInterpreter <- FilesystemExecutor[IO](JVM(config.fs.baseDir))
+    (notificationStream, notificationInterpreter) <- NotificationExecutor[IO](Fs2())
+    reportInterpreter <- ReportExecutor[IO](ExistingSqlTransactor(xa), Scalatags())
+    authIntepreter <- AuthExecutor[IO](Environment(config.authentication.user, config.authentication.password, config.authentication.rawKey))
     unscheduledInterpreter =
-      mongoInterpreter or (notificationInterpreter or (fsInterpreter or (logInterpreter or (dbInterpreter))))
-    cronInterpreter <- CronExecutor(
-      CatsEffectScheduler[IO](unscheduledInterpreter)
-    )
+      reportInterpreter or (notificationInterpreter or (authIntepreter or (fsInterpreter or (logInterpreter or (dbInterpreter)))))
+    cronMaker = CatsEffectScheduler[IO](unscheduledInterpreter)
+    cronInterpreter <- CronExecutor(cronMaker)
     finalInterpreter = cronInterpreter or unscheduledInterpreter
   yield new Executor[IO] {
     def compiler = Compiler
     def interpreter = finalInterpreter
     def stream = notificationStream
-  }
+  } -> config.http.port
 
   def run(args: List[String]): IO[ExitCode] = (for
-    given Executor[IO] <- Stream.resource(executor)
-    server <- Stream.resource(HttpServer[IO].server)
+    (executor, port) <- Stream.resource(executor)
+    given Executor[IO] = executor
+    server <- Stream.resource(HttpServer[IO].server(port))
   yield server).compile.drain.as(ExitCode.Success)
 }

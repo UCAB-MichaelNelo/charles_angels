@@ -10,16 +10,14 @@ import org.charles.angels.houses.application.services.ServiceLanguage
 import org.charles.angels.houses.application.models.HouseModel
 import org.charles.angels.houses.domain.Contact
 import org.charles.angels.houses.application.errors.given
-import org.charles.angels.houses.domain.Schedule
 import org.charles.angels.houses.domain.House
 import java.util.UUID
 import org.charles.angels.houses.domain.events.HouseEvent
 import org.charles.angels.houses.domain.events.ContactEvent
-import org.charles.angels.houses.domain.RawScheduleBlock
-import org.charles.angels.houses.domain.ScheduleBlock
-import org.charles.angels.houses.domain.events.ScheduleEvent
 import org.charles.angels.houses.application.errors.ApplicationError
 import java.io.File
+import java.time.LocalTime
+import java.time.LocalDate
 
 object ApplicationDSL:
   private val STDL = StandardLanguage[ApplicationAction]
@@ -47,14 +45,6 @@ object ApplicationDSL:
     () <- notifyContactEvent(contactEvent)
   yield ncontact
 
-  private def withSchedule[A](
-      id: UUID
-  )(update: Schedule => ApplicationLanguage[(Schedule, ScheduleEvent)]) = for
-    schedule <- getSchedule(id)
-    (nschedule, scheduleEvent) <- update(schedule)
-    () <- notifyScheduleEvent(scheduleEvent)
-  yield nschedule
-
   // Use cases relative to House Entity
 
   def findHouse(id: UUID) = getHouse(id)
@@ -63,7 +53,7 @@ object ApplicationDSL:
 
   def assertRifDoesNotExist(rif: Int): ApplicationLanguage[Unit] = QL.doesRifExist(rif).leftWiden[NonEmptyChain[ApplicationError]]
 
-  def getAllContactCI = QL.getAllContactCI
+  def getAllContacts = QL.getContacts
 
   def createHouse(house: HouseModel) = for
     _ <- assertRifDoesNotExist(house.rif)
@@ -80,15 +70,6 @@ object ApplicationDSL:
           )
         yield (contact, Some(evt))
       }
-    (schedule, scheduleCreated) <- of(
-      Schedule(
-        house.schedule.monday,
-        house.schedule.tuesday,
-        house.schedule.wednesday,
-        house.schedule.thursday,
-        house.schedule.friday
-      )
-    )
     file = File(house.filename)
     result <- of(
       House(
@@ -98,13 +79,14 @@ object ApplicationDSL:
         house.phones,
         house.address,
         contact.ci,
-        schedule.id,
         house.maxShares,
         house.currentShares,
         house.minimumAge,
         house.maximumAge,
         house.currentGirlsHelped,
-        house.currentBoysHelped
+        house.currentBoysHelped,
+        house.scheduleStartTime,
+        house.scheduleEndTime
       )
     ).attempt
     (house, houseCreated) <- result match
@@ -114,7 +96,6 @@ object ApplicationDSL:
       case Some(event) => notifyContactEvent(event)
       case None        => ().pure[ApplicationLanguage]
     }) >>
-      notifyScheduleEvent(scheduleCreated) >>
       notifyHouseEvent(houseCreated)
   yield house
 
@@ -123,17 +104,25 @@ object ApplicationDSL:
     yield house.setName(vname)
   }
 
-  def setImageToHouse(id: UUID, contents: Array[Byte]) = withHouse(id) {
+  def setImageToHouse(id: UUID, ext: String, contents: Array[Byte]) = withHouse(id) {
     house =>
       for
-        img <- alloc(contents, house.name)
+        img <- alloc(contents, f"${house.rif}.$ext")
         vimg <- of(House.Image(img)).onError { _ => dealloc(img) }
       yield house.setImage(vimg)
+  }
+
+  def setImageToHouse(id: UUID, file: File) = withHouse(id) { house =>
+    of(House.Image(file).map(house.setImage))
   }
 
   def setRIFToHouse(id: UUID, rif: Int) = withHouse(id) { house =>
     for vrif <- of(House.RIF(rif))
     yield house.setRIF(vrif)
+  }
+
+  def setAddressToHouse(id: UUID, address: String) = withHouse(id) { house => 
+    of(House.Address(address).map(house.setAddress(_)))
   }
 
   def addPhoneToHouse(id: UUID, phone: String) = withHouse(id) { house =>
@@ -156,10 +145,6 @@ object ApplicationDSL:
     yield house.setMaxShares(vmaxShares)
   }
 
-  def setCurrentSharesOfHouse(id: UUID, currentShares: Int) = withHouse(id) {
-    _.setCurrentShares(currentShares).pure
-  }
-
   def setMinimumAgeOfHouse(id: UUID, minimumAge: Int) = withHouse(id) { house =>
     for (vmin, _) <- of(House.AgeLimits(minimumAge, house.maximumAge))
     yield house.setMinimumAge(vmin)
@@ -170,20 +155,62 @@ object ApplicationDSL:
     yield house.setMaximumAge(vmax)
   }
 
-  def setCurrentBoysHelpedOfHouse(id: UUID, currentBoysHelped: Int) =
-    withHouse(id) {
-      _.setCurrentBoysHelped(currentBoysHelped).pure
+  def incrementCurrentSharesOfHouse(id: UUID) = withHouse(id) { house =>
+    house.setCurrentShares(house.currentShares + 1).pure
+  }
+
+  def decrementCurrentSharesOfHouse(id: UUID) = withHouse(id) { house =>
+    house.setCurrentShares(house.currentShares - 1).pure
+  }
+
+  def incrementCurrentBoysHelpedOfHouse(id: UUID) =
+    withHouse(id) { house =>
+      house.setCurrentBoysHelped(house.currentBoysHelped + 1).pure
     }
 
-  def setCurrentGirlsHelpedOfHouse(id: UUID, currentGirlsHelped: Int) =
-    withHouse(id) {
-      _.setCurrentGirlsHelped(currentGirlsHelped).pure
+  def decrementCurrentBoysHelpedOfHouse(id: UUID) =
+    withHouse(id) { house =>
+      house.setCurrentBoysHelped(house.currentBoysHelped - 1).pure
     }
+
+  def incrementCurrentGirlsHelpedOfHouse(id: UUID) =
+    withHouse(id) { house =>
+      house.setCurrentGirlsHelped(house.currentGirlsHelped + 1).pure
+    }
+  def decrementCurrentGirlsHelpedOfHouse(id: UUID) =
+    withHouse(id) { house =>
+      house.setCurrentGirlsHelped(house.currentGirlsHelped - 1).pure
+    }
+
+  def setScheduleStartTimeOfHouse(id: UUID, startTime: LocalTime) = 
+    withHouse(id) { house =>
+      of(house.setScheduleStartTime(startTime))
+    }
+
+  def setScheduleEndTimeOfHouse(id: UUID, endTime: LocalTime) =
+    withHouse(id) { house =>
+      of(house.setScheduleEndTime(endTime))
+    }
+
+  def setContactCIOfHouse(id: UUID, ci: Int) = for
+    contact <- findContact(ci)
+    _ <- withHouse(id) { house =>
+      of(Contact.CI(contact.ci).map(house.setContact))
+    }
+  yield ()
 
   def deleteHouse(id: UUID) = for
     house <- getHouse(id)
     () <- notifyHouseEvent(house.delete)
   yield ()
+
+  def validateCanAddWithBirthdate(id: UUID, birthdate: LocalDate) = for
+    house <- getHouse(id)
+  yield house.validateAgeBounds(birthdate) && house.canHaveNewBeneficiaries
+
+  def getHousesThatCanAddWithBirthdate(birthdate: LocalDate) = for
+    houses <- getAllHouses
+  yield houses.filter(house => house.validateAgeBounds(birthdate) && house.canHaveNewBeneficiaries)
 
   // Use cases relative to Contact
 
@@ -213,252 +240,4 @@ object ApplicationDSL:
   def deleteContact(ci: Int) = for
     contact <- getContact(ci)
     () <- notifyContactEvent(contact.delete)
-  yield ()
-
-  // Use cases relative to Schedule
-
-  def findSchedule(id: UUID) = getSchedule(id)
-
-  private def addBlock(
-      id: UUID,
-      rawBlock: RawScheduleBlock
-  )(
-      addBlockToSchedule: (
-          Schedule,
-          ScheduleBlock
-      ) => ApplicationLanguage[(Schedule, ScheduleEvent)]
-  ) =
-    withSchedule(id) { schedule =>
-      for
-        sblock <- of(ScheduleBlock(rawBlock))
-        t <- addBlockToSchedule(schedule, sblock)
-      yield t
-    }
-
-  def addBlockOnMonday(id: UUID, rawBlock: RawScheduleBlock) =
-    addBlock(id, rawBlock) { (schedule, block) =>
-      of(schedule.addBlockOnMonday(block))
-    }
-
-  def addBlockOnTuesday(id: UUID, rawBlock: RawScheduleBlock) =
-    addBlock(id, rawBlock) { (schedule, block) =>
-      of(schedule.addBlockOnTuesday(block))
-    }
-
-  def addBlockOnWednesday(id: UUID, rawBlock: RawScheduleBlock) =
-    addBlock(id, rawBlock) { (schedule, block) =>
-      of(schedule.addBlockOnWednesday(block))
-    }
-
-  def addBlockOnThursday(id: UUID, rawBlock: RawScheduleBlock) =
-    addBlock(id, rawBlock) { (schedule, block) =>
-      of(schedule.addBlockOnThursday(block))
-    }
-
-  def addBlockOnFriday(id: UUID, rawBlock: RawScheduleBlock) =
-    addBlock(id, rawBlock) { (schedule, block) =>
-      of(schedule.addBlockOnFriday(block))
-    }
-
-  private def removeBlock(
-      id: UUID,
-      key: Int
-  )(
-      removeBlockFromSchedule: (
-          Schedule,
-          Int
-      ) => ApplicationLanguage[(Schedule, ScheduleEvent)]
-  ) =
-    withSchedule(id) {
-      removeBlockFromSchedule(_, key)
-    }
-
-  def removeBlockOnMonday(id: UUID, key: Int) =
-    removeBlock(id, key) { (schedule, key) =>
-      of(schedule.removeBlockOnMonday(key))
-    }
-
-  def removeBlockOnTuesday(id: UUID, key: Int) =
-    removeBlock(id, key) { (schedule, key) =>
-      of(schedule.removeBlockOnTuesday(key))
-    }
-
-  def removeBlockOnWednesday(id: UUID, key: Int) =
-    removeBlock(id, key) { (schedule, key) =>
-      of(schedule.removeBlockOnWednesday(key))
-    }
-
-  def removeBlockOnThursday(id: UUID, key: Int) =
-    removeBlock(id, key) { (schedule, key) =>
-      of(schedule.removeBlockOnThursday(key))
-    }
-
-  def removeBlockOnFriday(id: UUID, key: Int) =
-    removeBlock(id, key) { (schedule, key) =>
-      of(schedule.removeBlockOnFriday(key))
-    }
-
-  def setStartingHourOnMonday(id: UUID, key: Int, startingHour: Int) =
-    withSchedule(id) { schedule =>
-      for
-        vhour <- of(ScheduleBlock.Hour(startingHour))
-        t <- of(schedule.setStartingHourOnMonday(key, startingHour))
-      yield t
-    }
-
-  def setStartingHourOnTuesday(id: UUID, key: Int, startingHour: Int) =
-    withSchedule(id) { schedule =>
-      for
-        vhour <- of(ScheduleBlock.Hour(startingHour))
-        t <- of(schedule.setStartingMinuteOnTuesday(key, startingHour))
-      yield t
-    }
-
-  def setStartingHourOnWednesday(id: UUID, key: Int, startingHour: Int) =
-    withSchedule(id) { schedule =>
-      for
-        vhour <- of(ScheduleBlock.Hour(startingHour))
-        t <- of(schedule.setStartingHourOnWednesday(key, startingHour))
-      yield t
-    }
-
-  def setStartingHourOnThursday(id: UUID, key: Int, startingHour: Int) =
-    withSchedule(id) { schedule =>
-      for
-        vhour <- of(ScheduleBlock.Hour(startingHour))
-        t <- of(schedule.setStartingHourOnThursday(key, startingHour))
-      yield t
-    }
-
-  def setStartingHourOnFriday(id: UUID, key: Int, startingHour: Int) =
-    withSchedule(id) { schedule =>
-      for
-        vhour <- of(ScheduleBlock.Hour(startingHour))
-        t <- of(schedule.setStartingHourOnFriday(key, startingHour))
-      yield t
-    }
-
-  def setStartingMinuteOnMonday(id: UUID, key: Int, startingMinute: Int) =
-    withSchedule(id) { schedule =>
-      for
-        vhour <- of(ScheduleBlock.Minute(startingMinute))
-        t <- of(schedule.setStartingMinuteOnMonday(key, startingMinute))
-      yield t
-    }
-
-  def setStartingMinuteOnTuesday(id: UUID, key: Int, startingMinute: Int) =
-    withSchedule(id) { schedule =>
-      for
-        vhour <- of(ScheduleBlock.Minute(startingMinute))
-        t <- of(schedule.setStartingMinuteOnTuesday(key, startingMinute))
-      yield t
-    }
-
-  def setStartingMinuteOnWednesday(id: UUID, key: Int, startingMinute: Int) =
-    withSchedule(id) { schedule =>
-      for
-        vhour <- of(ScheduleBlock.Minute(startingMinute))
-        t <- of(schedule.setStartingMinuteOnWednesday(key, startingMinute))
-      yield t
-    }
-
-  def setStartingMinuteOnThursday(id: UUID, key: Int, startingMinute: Int) =
-    withSchedule(id) { schedule =>
-      for
-        vhour <- of(ScheduleBlock.Minute(startingMinute))
-        t <- of(schedule.setStartingMinuteOnThursday(key, startingMinute))
-      yield t
-    }
-
-  def setStartingMinuteOnFriday(id: UUID, key: Int, startingMinute: Int) =
-    withSchedule(id) { schedule =>
-      for
-        vhour <- of(ScheduleBlock.Minute(startingMinute))
-        t <- of(schedule.setStartingMinuteOnFriday(key, startingMinute))
-      yield t
-    }
-
-  def setDurationHoursOnMonday(id: UUID, key: Int, durationHours: Int) =
-    withSchedule(id) { schedule =>
-      for
-        vhour <- of(ScheduleBlock.Hour(durationHours))
-        t <- of(schedule.setDurationHoursOnMonday(key, durationHours))
-      yield t
-    }
-
-  def setDurationHoursOnTuesday(id: UUID, key: Int, durationHours: Int) =
-    withSchedule(id) { schedule =>
-      for
-        vhour <- of(ScheduleBlock.Hour(durationHours))
-        t <- of(schedule.setDurationHoursOnTuesday(key, durationHours))
-      yield t
-    }
-
-  def setDurationHoursOnWednesday(id: UUID, key: Int, durationHours: Int) =
-    withSchedule(id) { schedule =>
-      for
-        vhour <- of(ScheduleBlock.Hour(durationHours))
-        t <- of(schedule.setDurationHoursOnWednesday(key, durationHours))
-      yield t
-    }
-
-  def setDurationHoursOnThursday(id: UUID, key: Int, durationHours: Int) =
-    withSchedule(id) { schedule =>
-      for
-        vhour <- of(ScheduleBlock.Hour(durationHours))
-        t <- of(schedule.setDurationHoursOnThursday(key, durationHours))
-      yield t
-    }
-
-  def setDurationHoursOnFriday(id: UUID, key: Int, durationHours: Int) =
-    withSchedule(id) { schedule =>
-      for
-        vhour <- of(ScheduleBlock.Hour(durationHours))
-        t <- of(schedule.setDurationHoursOnFriday(key, durationHours))
-      yield t
-    }
-
-  def setDurationMinuteOnMonday(id: UUID, key: Int, durationMinutes: Int) =
-    withSchedule(id) { schedule =>
-      for
-        vhour <- of(ScheduleBlock.Minute(durationMinutes))
-        t <- of(schedule.setDurationMinutesOnMonday(key, durationMinutes))
-      yield t
-    }
-
-  def setDurationMinuteOnTuesday(id: UUID, key: Int, durationMinutes: Int) =
-    withSchedule(id) { schedule =>
-      for
-        vhour <- of(ScheduleBlock.Minute(durationMinutes))
-        t <- of(schedule.setDurationMinutesOnTuesday(key, durationMinutes))
-      yield t
-    }
-
-  def setDurationMinuteOnWednesday(id: UUID, key: Int, durationMinutes: Int) =
-    withSchedule(id) { schedule =>
-      for
-        vhour <- of(ScheduleBlock.Minute(durationMinutes))
-        t <- of(schedule.setDurationMinutesOnWednesday(key, durationMinutes))
-      yield t
-    }
-
-  def setDurationMinuteOnThursday(id: UUID, key: Int, durationMinutes: Int) =
-    withSchedule(id) { schedule =>
-      for
-        vhour <- of(ScheduleBlock.Minute(durationMinutes))
-        t <- of(schedule.setDurationMinutesOnThursday(key, durationMinutes))
-      yield t
-    }
-
-  def setDurationMinuteOnFriday(id: UUID, key: Int, durationMinutes: Int) =
-    withSchedule(id) { schedule =>
-      for
-        vhour <- of(ScheduleBlock.Minute(durationMinutes))
-        t <- of(schedule.setDurationMinutesOnFriday(key, durationMinutes))
-      yield t
-    }
-
-  def deleteSchedule(id: UUID) = for
-    schedule <- getSchedule(id)
-    () <- notifyScheduleEvent(schedule.delete)
   yield ()

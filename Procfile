@@ -1,0 +1,1 @@
+web: server/target/universal/scripts/bin/charles-angels-houses-server.bat

@@ -26,20 +26,92 @@ import doobie.hikari.HikariTransactor
 import scala.concurrent.ExecutionContext
 import java.util.concurrent.Executors
 import java.time.LocalDate
+import org.charles.angels.people.application.models.PersonalInformationOfChild
 
 class SqlExecutor[F[_]: Async](xa: Transactor[F])
     extends (DatabaseAction ~> F) {
+
+  private def getSexChar = (_: Wear) match {
+    case Wear.BoyWear(_)  => "M"
+    case Wear.GirlWear(_) => "F"
+  }
+
   private def insertOptionalPersonalInformation(
       inf: Option[PersonalInformation],
       idChildren: Option[UUID]
   ) = {
     inf match {
       case Some(fi) =>
-        sql"""INSERT INTO "personal_information" (ci, name, lastname, birthdate, id_children) VALUES (${fi.ci}, ${fi.name}, ${fi.lastname}, ${fi.birthdate}, $idChildren)""".update.run.void
+        sql"""INSERT INTO "personal_information" (ci, name, lastname, birthdate, id_children) VALUES (${fi.ci}, ${fi.name}, ${fi.lastname}, ${fi.birthdate}, $idChildren) ON CONFLICT DO NOTHING""".update.run.void
       case None => ().pure[ConnectionIO]
     }
   }
   def apply[A](action: DatabaseAction[A]) = action match {
+    case DatabaseAction.SetTutorCIToChild(id, ci) =>
+      sql"""UPDATE "children" SET non_parent_ci = $ci WHERE id = $id"""
+      .update
+      .run
+      .transact(xa)
+      .void
+      .attempt
+    case DatabaseAction.SetFatherCIToChild(id, ci) =>
+      sql"""UPDATE "children" SET father_ci = $ci WHERE id = $id"""
+      .update
+      .run
+      .transact(xa)
+      .void
+      .attempt
+    case DatabaseAction.SetMotherCIToChild(id, ci) =>
+      sql"""UPDATE "children" SET mother_ci = $ci WHERE id = $id"""
+      .update
+      .run
+      .transact(xa)
+      .void
+      .attempt
+    case DatabaseAction.RemoveRelatedBeneficiary(id, bid) =>
+      sql"""DELETE FROM "related_beneficiaries" WHERE child_id = $id AND related_id = $bid"""
+      .update
+      .run
+      .transact(xa)
+      .void
+      .attempt
+    case DatabaseAction.AddRelatedBeneficiary(id, bid) =>
+      sql"""INSERT INTO "related_beneficiaries" (child_id, related_id) VALUES ($id, $bid)"""
+      .update
+      .run
+      .transact(xa)
+      .void
+      .attempt
+    case DatabaseAction.DoesChildCiExist(ci) =>
+      sql"""SELECT ci FROM "personal_information" WHERE ci = $ci"""
+      .query[Int]
+      .option
+      .transact(xa)
+      .attempt
+    case DatabaseAction.GetChildrenPersonalInformation =>
+      sql"""SELECT * FROM "personal_information" WHERE id_children IS NOT NULL"""
+      .query[PersonalInformationOfChild]
+      .to[Vector]
+      .transact(xa)
+      .attempt
+    case DatabaseAction.GetAllPersonalInformation =>
+      sql"""SELECT * FROM "personal_information" WHERE id_children IS NULL"""
+      .query[SqlExecutor.PersonalInformationModel]
+      .to[Vector]
+      .nested
+      .map(_.toPersonalInformation)
+      .value
+      .transact(xa)
+      .attempt
+    case DatabaseAction.GetPersonalInformation(ci) => 
+      sql"""SELECT * FROM "personal_information" WHERE ci = $ci AND id_children IS NULL"""
+      .query[SqlExecutor.PersonalInformationModel]
+      .option
+      .nested
+      .map(_.toPersonalInformation)
+      .value
+      .transact(xa)
+      .attempt
     case DatabaseAction.GetChildByCI(ci) =>
       (
         for
@@ -47,9 +119,9 @@ class SqlExecutor[F[_]: Async](xa: Transactor[F])
             sql"""SELECT c.id, c.sex, c.photo, pi.*, mpi.*, fpi.*, nppi.*, a.*
                   FROM "children" c
                   INNER JOIN "personal_information" pi ON c.id = pi.id_children
-                  INNER JOIN "personal_information" mpi ON c.mother_ci = pi.ci
-                  INNER JOIN "personal_information" fpi ON c.father_ci = pi.ci
-                  INNER JOIN "personal_information" nppi ON c.non_parent_ci = pi.ci
+                  LEFT JOIN "personal_information" mpi ON c.mother_ci = pi.ci
+                  LEFT JOIN "personal_information" fpi ON c.father_ci = pi.ci
+                  LEFT JOIN "personal_information" nppi ON c.non_parent_ci = pi.ci
                   INNER JOIN "attires" a ON c.id = a.id_child
                   WHERE pi.ci = $ci
               """
@@ -57,15 +129,39 @@ class SqlExecutor[F[_]: Async](xa: Transactor[F])
               .option
           related <- result match {
             case Some(childModel) =>
-              sql"""SELECT pi.*
+              sql"""SELECT rb.related_id
                   FROM "related_beneficiaries" rb
-                  WHERE rb.child_id = ${childModel.id}
-                  INNER JOIN "personal_information" pi ON pi.ci == rb.related_ci"""
-                .query[SqlExecutor.PersonalInformationModel]
+                  WHERE rb.child_id = ${childModel.id}"""
+                .query[UUID]
                 .to[List]
             case None => List.empty.pure[ConnectionIO]
           }
-        yield result.flatMap(_.toChild(related))
+        yield result.flatMap(_.toChild(related.toVector))
+      ).transact(xa).attempt
+    case DatabaseAction.GetAllChildren =>
+      (
+        for
+          childModels <-
+            sql"""SELECT c.id, c.sex, c.photo, pi.*, mpi.*, fpi.*, nppi.*, a.*
+                  FROM "children" c
+                  INNER JOIN "personal_information" pi ON c.id = pi.id_children
+                  LEFT JOIN "personal_information" mpi ON c.mother_ci = mpi.ci
+                  LEFT JOIN "personal_information" fpi ON c.father_ci = fpi.ci
+                  LEFT JOIN "personal_information" nppi ON c.non_parent_ci = nppi.ci
+                  INNER JOIN "attires" a ON c.id = a.id_child
+              """
+              .query[SqlExecutor.ChildModel]
+              .to[Vector]
+          result <- childModels.toList.traverse { child =>
+            sql"""SELECT rb.related_id
+                  FROM "related_beneficiaries" rb
+                  WHERE rb.child_id = ${child.id}
+               """
+              .query[UUID]
+              .to[List]
+              .tupleLeft(child)
+          }
+        yield result.toVector.flatMap((tup) => tup._1.toChild(tup._2.toVector).map(Vector(_)).getOrElse(Vector.empty[Child]))
       ).transact(xa).attempt
     case DatabaseAction.GetChild(id) =>
       (
@@ -82,28 +178,23 @@ class SqlExecutor[F[_]: Async](xa: Transactor[F])
               """
               .query[SqlExecutor.ChildModel]
               .option
-          _ = println(result)
           related <-
-            sql"""SELECT pi.*
+            sql"""SELECT rb.related_id
                   FROM "related_beneficiaries" rb
-                  INNER JOIN "personal_information" pi ON pi.ci = rb.related_ci
                   WHERE rb.child_id = $id
                """
-              .query[SqlExecutor.PersonalInformationModel]
+              .query[UUID]
               .to[List]
-        yield result.flatMap(_.toChild(related))
+        yield result.flatMap(_.toChild(related.toVector))
       ).transact(xa).attempt
     case DatabaseAction.StoreChild(info, wear, id) =>
-      val sexChar = wear match {
-        case Wear.BoyWear(_)  => "M"
-        case Wear.GirlWear(_) => "F"
-      }
+      var sexChar = getSexChar(wear)
       val attire = SqlExecutor.AttireModel(wear, id)
-      val relatedBen = info.relatedBeneficiaries.values.toList
+      val relatedBen = info.relatedBeneficiaries
       (insertOptionalPersonalInformation(info.father, None) >>
         insertOptionalPersonalInformation(info.mother, None) >>
         insertOptionalPersonalInformation(info.nonParent, None) >>
-        sql"""INSERT INTO "children" (id, sex, photo, mother_ci, father_ci, non_parent_ci) VALUES (
+        sql"""INSERT INTO "children" (id, sex, photo, father_ci, mother_ci, non_parent_ci) VALUES (
           $id,
           $sexChar,
           ${info.photo.getAbsolutePath},
@@ -112,12 +203,9 @@ class SqlExecutor[F[_]: Async](xa: Transactor[F])
           ${info.nonParent.map(_.ci)})
         """.update.run >>
         insertOptionalPersonalInformation(info.information.some, id.some) >>
-        Update[PersonalInformation](
-          """INSERT INTO "personal_information" (ci, name, lastname, birthdate) VALUES (?, ?, ?, ?)"""
-        ).updateMany(relatedBen) >>
-        Update[(UUID, Int)](
-          """INSERT INTO "related_beneficiaries" (child_id, related_ci) VALUES (?, ?)"""
-        ).updateMany(relatedBen.map(p => (id, p.ci))) >>
+        Update[(UUID, UUID)](
+          """INSERT INTO "related_beneficiaries" (child_id, related_id) VALUES (?, ?)"""
+        ).updateMany(relatedBen.map(p => (id, p))) >>
         sql"""INSERT INTO "attires" (short_or_trousers_size, tshirt_or_shirt_size, sweater_size, dress_size, footwear_size, id_child) VALUES (${attire.shortOrTrousersSize}, ${attire.tshirtOrshirtSize}, ${attire.sweaterSize}, ${attire.dressSize}, ${attire.footwearSize}, $id)""".update.run).void
         .transact(xa)
         .attempt
@@ -134,8 +222,11 @@ class SqlExecutor[F[_]: Async](xa: Transactor[F])
         .transact(xa)
         .attempt
     case DatabaseAction.UpdateAttire(id, wear) =>
+      val sexChar = getSexChar(wear)
       val attire = SqlExecutor.AttireModel(wear, id)
-      sql"""UPDATE "attires" SET short_or_trousers_size = ${attire.shortOrTrousersSize}, tshirt_or_shirt_size = ${attire.tshirtOrshirtSize}, sweater_size = ${attire.sweaterSize}, dress_size = ${attire.dressSize}, footwear_size = ${attire.footwearSize} WHERE id_child = $id""".update.run.void
+      ((sql"""UPDATE "attires" SET short_or_trousers_size = ${attire.shortOrTrousersSize}, tshirt_or_shirt_size = ${attire.tshirtOrshirtSize}, sweater_size = ${attire.sweaterSize}, dress_size = ${attire.dressSize}, footwear_size = ${attire.footwearSize} WHERE id_child = $id""".update.run) >>
+        (sql"""UPDATE "children" SET sex = $sexChar WHERE id = $id""").update.run)
+        .void
         .transact(xa)
         .attempt
     case DatabaseAction.UpdatePhoto(id, filename) =>
@@ -143,9 +234,8 @@ class SqlExecutor[F[_]: Async](xa: Transactor[F])
         .transact(xa)
         .attempt
     case DatabaseAction.DeleteChild(id) =>
-      (sql"""DELETE FROM "personal_information" pi USING "children" c WHERE (c.mother_ci = pi.ci OR c.father_ci = pi.ci OR c.non_parent_ci = pi.ci OR pi.id_children = $id) AND c.id = $id""".update.run >>
-        sql"""DELETE FROM "personal_information" pi USING "related_beneficiaries" rb WHERE pi.ci = rb.related_ci AND rb.child_id = $id""".update.run >>
-        sql"""DELETE FROM "related_beneficiaries" WHERE child_id = $id""".update.run >>
+      (sql"""DELETE FROM "personal_information" pi USING "children" c WHERE pi.id_children = $id AND c.id = $id""".update.run >>
+        sql"""DELETE FROM "related_beneficiaries" WHERE child_id = $id OR related_id = $id""".update.run >>
         sql"""DELETE FROM "attires" WHERE id_child = $id""".update.run >>
         sql"""DELETE FROM "children" WHERE id = $id""".update.run).void
         .transact(xa)
@@ -205,15 +295,15 @@ object SqlExecutor {
       attire: AttireModel
   ) {
     def toChild(
-        relatedBeneficiaries: List[PersonalInformationModel]
+        relatedBeneficiaries: Vector[UUID]
     ): Option[Child] = {
       val ci = ChildInformation(
         pi.toPersonalInformation,
         fpi.map(_.toPersonalInformation),
         mpi.map(_.toPersonalInformation),
         nppi.map(_.toPersonalInformation),
-        relatedBeneficiaries.map(rb => (rb.ci, rb.toPersonalInformation)).toMap,
-        new File(photo)
+        relatedBeneficiaries,
+        File(photo)
       )
       (sex, attire.sweaterSize, attire.dressSize) match {
         case ("M", Some(sweaterSize), None) =>
@@ -254,7 +344,7 @@ given [F[_]: Async]: Make[F, DatabaseAction, Sql] with
   def make(sql: Sql) = for
     tp <- Resource.eval {
       Async[F].delay(
-        ExecutionContext.fromExecutorService(Executors.newWorkStealingPool(32))
+        ExecutionContext.fromExecutorService(Executors.newWorkStealingPool(8))
       )
     }
     transactor <- HikariTransactor.newHikariTransactor[F](

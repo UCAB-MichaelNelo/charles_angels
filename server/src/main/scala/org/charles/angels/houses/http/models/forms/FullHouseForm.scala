@@ -9,12 +9,24 @@ import org.http4s.implicits.*
 import org.http4s.*
 import org.http4s.EntityDecoder
 import cats.data.Chain
-import org.charles.angels.houses.domain.RawScheduleBlock
-import org.charles.angels.houses.application.models.ScheduleModel
 import org.charles.angels.houses.application.models.ContactModel
 import org.charles.angels.houses.application.models.HouseModel
 import cats.Functor
 import org.http4s.dsl.impl.QueryParamDecoderMatcher
+import java.time.LocalDate
+import org.http4s.dsl.impl.OptionalQueryParamDecoderMatcher
+
+private given QueryParamDecoder[LocalDate] = 
+  QueryParamDecoder[String]
+  .emap(s => 
+    Either.catchNonFatal {
+     LocalDate.parse(s) 
+    }
+    .leftMap(e => ParseFailure("Could not parse string as local date", e.getMessage))
+  )
+
+object BirthdateQueryParamMatcher
+  extends OptionalQueryParamDecoderMatcher[LocalDate]("birthdate")
 
 object ImageExtensionQueryParamMatcher
     extends QueryParamDecoderMatcher[String]("ext")
@@ -24,8 +36,7 @@ object RifQueryParamMatcher
 
 final case class FullHouseForm(
     house: HouseForm,
-    contact: ContactForm,
-    schedule: ScheduleForm
+    contact: ContactForm
 ) { form =>
   def toHouseModel[F[_]: Functor](resolve: String => F[String]) =
     resolve(s"${form.house.rif}.${form.house.fileExtension}").map { filename =>
@@ -47,58 +58,8 @@ final case class FullHouseForm(
           form.contact.lastname,
           form.contact.phone
         ),
-        ScheduleModel(
-          Chain.fromSeq(
-            form.schedule.monday.map(r =>
-              RawScheduleBlock(
-                r.startHour,
-                r.startMinute,
-                r.durationHours,
-                r.durationMinutes
-              )
-            )
-          ),
-          Chain.fromSeq(
-            form.schedule.tuesday.map(r =>
-              RawScheduleBlock(
-                r.startHour,
-                r.startMinute,
-                r.durationHours,
-                r.durationMinutes
-              )
-            )
-          ),
-          Chain.fromSeq(
-            form.schedule.wednesday.map(r =>
-              RawScheduleBlock(
-                r.startHour,
-                r.startMinute,
-                r.durationHours,
-                r.durationMinutes
-              )
-            )
-          ),
-          Chain.fromSeq(
-            form.schedule.thursday.map(r =>
-              RawScheduleBlock(
-                r.startHour,
-                r.startMinute,
-                r.durationHours,
-                r.durationMinutes
-              )
-            )
-          ),
-          Chain.fromSeq(
-            form.schedule.friday.map(r =>
-              RawScheduleBlock(
-                r.startHour,
-                r.startMinute,
-                r.durationHours,
-                r.durationMinutes
-              )
-            )
-          )
-        )
+        form.house.scheduleStartTime,
+        form.house.scheduleEndTime
       )
     }
 }

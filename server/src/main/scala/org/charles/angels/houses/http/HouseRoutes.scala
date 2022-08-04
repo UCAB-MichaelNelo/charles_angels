@@ -29,8 +29,6 @@ import org.charles.angels.houses.http.models.forms.given
 import org.charles.angels.houses.http.models.forms.*
 import org.charles.angels.houses.application.models.HouseModel
 import org.charles.angels.houses.application.models.ContactModel
-import org.charles.angels.houses.application.models.ScheduleModel
-import org.charles.angels.houses.domain.RawScheduleBlock
 import cats.data.Chain
 import cats.data.NonEmptyChain
 import org.charles.angels.houses.errors.given
@@ -49,8 +47,11 @@ class HouseRoutes[F[_]: Async: Concurrent: Parallel: Executor]
       () <- ApplicationDSL.assertRifDoesNotExist(rif).run
       response <- Ok("Rif does not exist")
     yield response
-    case GET -> Root => for
-      houses <- ApplicationDSL.getAllHouses.run
+    case GET -> Root :? BirthdateQueryParamMatcher(birthdateParam) => for
+      houses <- birthdateParam
+      .map(ApplicationDSL.getHousesThatCanAddWithBirthdate)
+      .getOrElse(ApplicationDSL.getAllHouses)
+      .run
       response <- Ok(houses.map(HouseViewModel(_)).asJson)
     yield response
     case GET -> Root / UUIDVar(id) =>
@@ -68,100 +69,100 @@ class HouseRoutes[F[_]: Async: Concurrent: Parallel: Executor]
       for
         write <- CompilerDSL.createFile(s"$rif.$ext").run
         _ <- write(req.body)
-        response <- Ok("Image allocated succesfully")
+        response <- Ok("Image allocated successfully")
       yield response
     case req @ POST -> Root =>
       for
         form <- req.as[FullHouseForm]
-        model <- form.toHouseModel { CompilerDSL.resolve }.run
+        model <- form.toHouseModel(CompilerDSL.resolve).run
         _ <- ApplicationDSL.createHouse(model).run
-        response <- Ok("Creation Succesfull")
+        response <- Ok("Creation Successful")
       yield response
-    case req @ PATCH -> Root / UUIDVar(id) / "image" =>
+    case req @ PATCH -> Root / UUIDVar(id) / "image" :? ImageExtensionQueryParamMatcher(ext) =>
       for
         image <- req.body.compile.toVector
-        _ <- ApplicationDSL.setImageToHouse(id, image.toArray).run
-        response <- Ok("Update Succesfull")
+        _ <- ApplicationDSL.setImageToHouse(id, ext, image.toArray).run
+        response <- Ok("Update Successful")
       yield response
     case req @ PATCH -> Root / UUIDVar(id) / "name" =>
       for
         form <- req.as[UpdateHouseNameForm]
         _ <- ApplicationDSL.setNameToHouse(id, form.name).run
-        response <- Ok("Update Succesfull")
+        response <- Ok("Update Successful")
       yield response
     case req @ PATCH -> Root / UUIDVar(id) / "rif" =>
       for
+        house <- ApplicationDSL.findHouse(id).run
         form <- req.as[UpdateHouseRIFForm]
         _ <- ApplicationDSL.setRIFToHouse(id, form.rif).run
-        response <- Ok("Update Succesfull")
+        file <- CompilerDSL.moveFile(house.img, f"${form.rif}.${house.fileExtension}").run
+        _ <- ApplicationDSL.setImageToHouse(id, file).run
+        response <- Ok("Update Successful")
+      yield response
+    case req @ PATCH -> Root / UUIDVar(id) / "address" =>
+      for
+        form <- req.as[UpdateHouseAddressForm]
+        _ <- ApplicationDSL.setAddressToHouse(id, form.address).run
+        response <- Ok("Update Successful")
       yield response
     case req @ POST -> Root / UUIDVar(id) / "phone" =>
       for
         form <- req.as[AddPhoneToHouseForm]
         _ <- ApplicationDSL.addPhoneToHouse(id, form.phone).run
-        response <- Ok("Phone Added Succesfully")
+        response <- Ok("Phone Added Successfully")
       yield response
     case req @ DELETE -> Root / UUIDVar(id) / "phone" =>
       for
         form <- req.as[RemovePhoneFromHouseForm]
         _ <- ApplicationDSL.removePhoneOfHouse(id, form.index).run
-        response <- Ok("Phone Removed Succesfully")
+        response <- Ok("Phone Removed Successfully")
       yield response
     case req @ PATCH -> Root / UUIDVar(id) / "phone" =>
       for
         form <- req.as[UpdatePhoneOfHouseForm]
         _ <- ApplicationDSL.updatePhoneOfHouse(id, form.index, form.phone).run
-        response <- Ok("Phone Updated Succesfully")
+        response <- Ok("Phone Updated Successfully")
       yield response
     case req @ PATCH -> Root / UUIDVar(id) / "maxShares" =>
       for
         form <- req.as[UpdateMaxSharesOfHouseForm]
         _ <- ApplicationDSL.setMaxSharesOfHouse(id, form.maxShares).run
-        response <- Ok("Update Succesfull")
-      yield response
-    case req @ PATCH -> Root / UUIDVar(id) / "currentShares" =>
-      for
-        form <- req.as[UpdateCurrentSharesOfHouseForm]
-        _ <- ApplicationDSL.setCurrentSharesOfHouse(id, form.currentShares).run
-        response <- Ok("Update Succesfull")
+        response <- Ok("Update Successful")
       yield response
     case req @ PATCH -> Root / UUIDVar(id) / "minimumAge" =>
       for
         form <- req.as[UpdateMinimumAgeOfHouseForm]
         _ <- ApplicationDSL.setMinimumAgeOfHouse(id, form.minimumAge).run
-        response <- Ok("Update Succesfull")
+        response <- Ok("Update Successful")
       yield response
     case req @ PATCH -> Root / UUIDVar(id) / "maximumAge" =>
       for
         form <- req.as[UpdateMaximumAgeOfHouseForm]
         _ <- ApplicationDSL.setMaximumAgeOfHouse(id, form.maximumAge).run
-        response <- Ok("Update Succesfull")
+        response <- Ok("Update Successful")
       yield response
-    case req @ PATCH -> Root / UUIDVar(id) / "currentGirlsHelped" =>
+    case req @ PATCH -> Root / UUIDVar(id) / "scheduleStartTime" =>
       for
-        form <- req.as[UpdateCurrentGirlsHelpedOfHouseForm]
-        _ <-
-          ApplicationDSL
-            .setCurrentGirlsHelpedOfHouse(
-              id,
-              form.currentGirlsHelped
-            )
-            .run
-        response <- Ok("Update Succesfull")
+        form <- req.as[UpdateScheduleStartTime]
+        _ <- ApplicationDSL.setScheduleStartTimeOfHouse(id, form.scheduleStartTime).run
+        response <- Ok("Update Successful")
       yield response
-    case req @ PATCH -> Root / UUIDVar(id) / "currentBoysHelped" =>
+    case req @ PATCH -> Root / UUIDVar(id) / "scheduleEndTime" =>
       for
-        form <- req.as[UpdateCurrentBoysHelpedOfHouseForm]
-        _ <-
-          ApplicationDSL
-            .setCurrentBoysHelpedOfHouse(id, form.currentBoysHelped)
-            .run
-        response <- Ok("Update Succesfull")
+        form <- req.as[UpdateScheduleEndTime]
+        _ <- ApplicationDSL.setScheduleEndTimeOfHouse(id, form.scheduleEndTime).run
+        response <- Ok("Update Successful")
+      yield response
+    case req @ PATCH -> Root / UUIDVar(id) / "contactCI" =>
+      for 
+        form <- req.as[UpdateContactCIOfHouse]
+        _ <- ApplicationDSL.setContactCIOfHouse(id, form.contactCI).run
+        response <- Ok("Update Successful")
       yield response
     case req @ DELETE -> Root / UUIDVar(id) =>
       for
         _ <- ApplicationDSL.deleteHouse(id).run
-        response <- Ok("Deletion Succesfull")
+        response <- Ok("Deletion Successful")
       yield response
   }
 }

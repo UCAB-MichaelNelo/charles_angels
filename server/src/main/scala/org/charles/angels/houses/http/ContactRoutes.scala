@@ -26,8 +26,8 @@ class ContactRoutes[F[_]: Async: Concurrent: Parallel: Executor]
     extends ServerRoutes[F] {
 
   def routes = HttpRoutes.of[F] {
-    case GET -> Root / "ci" => Ok {
-      ApplicationDSL.getAllContactCI.run.map(_.asJson)
+    case GET -> Root => Ok {
+      ApplicationDSL.getAllContacts.run.map(_.asJson)
     }
     case GET -> Root / IntVar(ci) =>
       for
@@ -38,30 +38,30 @@ class ContactRoutes[F[_]: Async: Concurrent: Parallel: Executor]
       for
         form <- req.as[UpdateCIOfContactForm]
         _ <- ApplicationDSL.setCIOfContact(ci, form.ci).run
-        response <- Ok("Update succesfull")
+        response <- Ok("Update successful")
       yield response
     case req @ PATCH -> Root / IntVar(ci) / "name" =>
       for
         form <- req.as[UpdateNameOfContactForm]
         _ <- ApplicationDSL.setNameOfContact(ci, form.name).run
-        response <- Ok("Update succesfull")
+        response <- Ok("Update successful")
       yield response
     case req @ PATCH -> Root / IntVar(ci) / "lastname" =>
       for
         form <- req.as[UpdateLastnameOfContactForm]
         _ <- ApplicationDSL.setLastnameOfContact(ci, form.lastname).run
-        response <- Ok("Update succesfull")
+        response <- Ok("Update successful")
       yield response
     case req @ PATCH -> Root / IntVar(ci) / "phone" =>
       for
         form <- req.as[UpdatePhoneOfContactForm]
         _ <- ApplicationDSL.setPhoneOfContact(ci, form.phone).run
-        response <- Ok("Update succesfull")
+        response <- Ok("Update successful")
       yield response
     case DELETE -> Root / IntVar(ci) =>
       for
         contact <- ApplicationDSL.deleteContact(ci).run
-        response <- Ok("Deletion succesfull")
+        response <- Ok("Deletion successful")
       yield response
   }
 }

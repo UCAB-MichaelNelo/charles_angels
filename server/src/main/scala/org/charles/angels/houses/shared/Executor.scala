@@ -38,6 +38,11 @@ abstract class Executor[F[_]: [F[_]] =>> MonadError[F, Throwable]]
       .foldMap(executor)
       .rethrow
 
+  def compile[E, G[_], A](lang: EitherT[Free[G, _], E, A])(using
+    E: Inject[E, ServerError],
+    I: InjectK[G, ApplicationAction]
+  ): ServerLanguage[A] = lang.leftMap(E.inj).value.inject.foldMap(cachedCompiler).rethrow
+
   def execute[G[_], E, A](lang: EitherT[Free[G, _], E, A])(using
       E: Inject[E, ServerError],
       I: InjectK[G, ApplicationAction]
@@ -52,6 +57,11 @@ abstract class Executor[F[_]: [F[_]] =>> MonadError[F, Throwable]]
         E: Inject[E, ServerError],
         I: InjectK[G, ApplicationAction]
     ) = self.execute(lang)
+  extension [E, G[_], A](lang: EitherT[Free[G, _], E, A])
+    def lift(using
+        E: Inject[E, ServerError],
+        I: InjectK[G, ApplicationAction]
+    ) = self.compile(lang)
 }
 
 object Executor {

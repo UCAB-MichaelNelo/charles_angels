@@ -20,6 +20,30 @@ import org.charles.angels.people.domain.Wear
 import org.charles.angels.people.domain.BoyAttire
 import org.charles.angels.people.domain.GirlAttire
 import java.time.LocalDate
+import org.http4s.dsl.impl.QueryParamDecoderMatcher
+import org.http4s.QueryParamDecoder
+import org.http4s.ParseFailure
+import org.http4s.dsl.impl.OptionalQueryParamDecoderMatcher
+
+enum HouseBelonging {
+  case BelongsToHouse(id: UUID)
+  case DoesNotBelongToAnyHouse
+}
+
+given QueryParamDecoder[UUID] = QueryParamDecoder[String].emap { s => Either.catchNonFatal(UUID.fromString(s)).leftMap(e => ParseFailure("Failed decoding uuid in query parameter", e.getMessage)) }
+
+given QueryParamDecoder[HouseBelonging] = 
+  QueryParamDecoder[UUID]
+    .map(HouseBelonging.BelongsToHouse.apply) <+>
+  QueryParamDecoder[String]
+    .emap(f => if(f == "none") f.asRight else ParseFailure("Invalid belonging", "To find childs with no house belonging use 'none'").asLeft)
+    .as(HouseBelonging.DoesNotBelongToAnyHouse)
+
+object HouseUUIDQueryParamMatcher extends OptionalQueryParamDecoderMatcher[HouseBelonging]("house")
+
+object CIQueryParamMatcher extends QueryParamDecoderMatcher[Int]("ci")
+
+object OptionalCIQueryParamMatcher extends OptionalQueryParamDecoderMatcher[Int]("ci")
 
 final case class AttireForm(
     shortOrTrousersSize: Int,
@@ -45,72 +69,12 @@ final case class AttireForm(
   ))
 }
 
-final case class ChildForm[F[_]](
-    photoContents: fs2.Stream[F, Byte],
-    filename: String,
-    sex: String,
+final case class ChildForm(
     houseId: UUID,
     pInfo: PersonalInformationModel,
     fInfo: Option[PersonalInformationModel],
     mInfo: Option[PersonalInformationModel],
     npInfo: Option[PersonalInformationModel],
-    rBen: List[PersonalInformationModel],
+    rBen: Vector[UUID],
     attire: AttireForm
 )
-
-given [F[_]: Monad: RaiseThrowable: Concurrent]: PartField[F, AttireForm] = (
-  PartField.field[F, Int]("shortsOrTrousersSize"),
-  PartField.field[F, Int]("tShirtOrShirtSize"),
-  PartField.field[F, Option[Int]]("sweaterSize"),
-  PartField.field[F, Option[Int]]("dressSize"),
-  PartField.field[F, Int]("footwearSize")
-).mapN(AttireForm.apply)
-
-given [F[_]: Monad: RaiseThrowable: Concurrent]
-    : PartField[F, PersonalInformationModel] = (
-  PartField.field[F, Int]("ci"),
-  PartField.field[F, String]("name"),
-  PartField.field[F, String]("lastname"),
-  PartField.field[F, LocalDate]("birthdate")
-).mapN(PersonalInformationModel.apply)
-
-given [F[_]: Concurrent: Parallel]: EntityDecoder[F, ChildForm[F]] =
-  EntityDecoder.multipart
-    .map { m =>
-      def rbV = (
-        m.parts.field[Vector[Int]](f"relatedBeneficiaries[][ci]"),
-        m.parts.field[Vector[String]](f"relatedBeneficiaries[][name]"),
-        m.parts
-          .field[Vector[String]](f"relatedBeneficiaries[][lastname]"),
-        m.parts
-          .field[Vector[LocalDate]](f"relatedBeneficiaries[][birthdate]")
-      ).mapN((ci, name, lastname, birthdate) =>
-        (ci, name, lastname, birthdate).parMapN(PersonalInformationModel.apply)
-      )
-
-      (
-        m.parts.field[FilePart[F]]("image"),
-        m.parts.field[String]("sex"),
-        m.parts.field[UUID]("houseId"),
-        m.parts.field[PersonalInformationModel]("personalInformation"),
-        m.parts.field[Option[PersonalInformationModel]]("fatherInformation"),
-        m.parts.field[Option[PersonalInformationModel]]("motherInformation"),
-        m.parts.field[Option[PersonalInformationModel]]("nonParentInformation"),
-        rbV,
-        m.parts.field[AttireForm]("attire")
-      ).parMapN { (file, sex, hId, pInf, fInf, mInf, npInf, relBen, attire) =>
-        ChildForm(
-          file.stream,
-          file.name,
-          sex,
-          hId,
-          pInf,
-          fInf,
-          mInf,
-          npInf,
-          relBen.toList,
-          attire
-        )
-      }
-    }
-    .flatMapR(result => DecodeResult(result.value))

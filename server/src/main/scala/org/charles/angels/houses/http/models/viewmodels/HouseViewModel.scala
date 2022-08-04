@@ -2,6 +2,7 @@ package org.charles.angels.houses.http.models.viewmodels
 
 import java.util.UUID
 import org.charles.angels.houses.domain.House
+import java.time.LocalTime
 
 case class HouseViewModel(
     id: UUID,
@@ -10,13 +11,14 @@ case class HouseViewModel(
     phones: Vector[String],
     address: String,
     contactCI: Int,
-    scheduleId: UUID,
     maxShares: Int,
     currentShares: Int,
     minimumAge: Int,
     maximumAge: Int,
     currentGirlsHelped: Int,
-    currentBoysHelped: Int
+    currentBoysHelped: Int,
+    scheduleStartTime: LocalTime,
+    scheduleEndTime: LocalTime
 )
 object HouseViewModel {
   def apply(house: House) = new HouseViewModel(
@@ -26,12 +28,13 @@ object HouseViewModel {
     house.phones,
     house.address,
     house.contactCI,
-    house.scheduleId,
     house.maxShares,
     house.currentShares,
     house.minimumAge,
     house.maximumAge,
     house.currentGirlsHelped,
-    house.currentBoysHelped
+    house.currentBoysHelped,
+    house.scheduleStartTime,
+    house.scheduleEndTime
   )
 }

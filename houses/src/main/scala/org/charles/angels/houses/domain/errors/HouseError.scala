@@ -18,3 +18,7 @@ enum HouseError:
   case MaximumAgeIsZero extends HouseError
   case MinimumAgeIsGreaterThanMaximumAge(minimumAge: Int, maximumAge: Int)
       extends HouseError
+  case ScheduleStartTimeIsAfterEndTime extends HouseError
+  case ScheduleEndTimeIsBeforeStartTime extends HouseError
+  case ScheduleStartTimeAndEndTimeAreEqual extends HouseError
+

@@ -8,7 +8,6 @@ import org.charles.angels.people.application.errors.ApplicationError as ChildApp
 import org.charles.angels.houses.domain.errors.HouseError
 import cats.data.Chain
 import org.charles.angels.houses.domain.errors.ContactError
-import org.charles.angels.houses.domain.errors.ScheduleError
 import io.circe.Encoder
 import io.circe.JsonObject
 import cats.Eval
@@ -61,6 +60,27 @@ extension [A](a: A) {
 
 given Detailer[HouseApplicationError] with
   private val houseHandler: HouseError => ProblemDetails = {
+    case HouseError.ScheduleEndTimeIsBeforeStartTime =>
+      ProblemDetails.Single(
+        "ScheduleEndTimeIsBeforeStartTime",
+        422,
+        "La hora de fin es anterior a la hora de inicio",
+        "Establezca una hora de fin que no ocurra antes de la hora de inicio"
+      )
+    case HouseError.ScheduleStartTimeIsAfterEndTime =>
+      ProblemDetails.Single(
+        "ScheduleStartTimeIsAfterEndTime",
+        422,
+        "La hora de inicio es posterior a la hora de fin",
+        "Establezca una hora de inicio que no ocurra despues de la hora de fin"
+      )
+    case HouseError.ScheduleStartTimeAndEndTimeAreEqual =>
+      ProblemDetails.Single(
+        "ScheduleStartTimeAndEndTimeAreEqual",
+        422,
+        "La hora de inicio y fin son iguales",
+        "Establezca horas diferentes para la hora de inicio y la hora de fin"
+      )
     case HouseError.EmptyImage =>
       ProblemDetails.Single(
         "EmptyImage",
@@ -204,57 +224,6 @@ given Detailer[HouseApplicationError] with
         "El telefono no cuenta con el formato adecuado (xxx-xxx-xxxx)"
       )
   }
-  private val scheduleHandler: ScheduleError => ProblemDetails = {
-    case ScheduleError.NoDurationProvided =>
-      ProblemDetails.Single(
-        "NoDurationProvided",
-        422,
-        "No se proveio la duracion del bloque",
-        "La duracion del bloque es obligatoria"
-      )
-    case ScheduleError.DurationGreaterThanADay(duration) =>
-      ProblemDetails.Single(
-        "DurationGreaterThanADay",
-        422,
-        "La duracion es superior a un dia",
-        s"""La duracion "$duration" es superior a un dia (24h)"""
-      )
-    case ScheduleError.IntersectingBlocks(b1, b2) =>
-      ProblemDetails.Single(
-        "IntersectingBlocks",
-        422,
-        "Dos bloques de un dia se intersectan",
-        s"""El bloque que inicia a las ${b1.starts} y dura ${b1.lasts} se intersecta con el bloque que inicia a las ${b2.starts} y dura ${b2.lasts}"""
-      )
-    case ScheduleError.InvalidHour(hour) =>
-      ProblemDetails.Single(
-        "InvalidHour",
-        422,
-        "La hora es invalida",
-        s"""La hora "$hour" es mayor a 23 o menor que 0"""
-      )
-    case ScheduleError.InvalidMinute(minute) =>
-      ProblemDetails.Single(
-        "InvalidMinute",
-        422,
-        "El minuto es invalido",
-        s"""El minuto "$minute" es mayor a 59 o menor que 0"""
-      )
-    case ScheduleError.NonExistentBlock(day, key) =>
-      ProblemDetails.Single(
-        "NonExistentBlock",
-        422,
-        "El bloque no existe",
-        s"""El bloque en el dia "$day" bajo llave "$key" no existe"""
-      )
-    case ScheduleError.StartTimeAndDurationOutlastsADay(starts, duration) =>
-      ProblemDetails.Single(
-        "StartTimeAndDurationOutlastsADay",
-        422,
-        "El bloque dura mas que un dia",
-        s"""El bloque que empieza en $starts y dura $duration acaba al dia siguiente"""
-      )
-  }
   private val handler: HouseApplicationError => ProblemDetails = { 
     case HouseApplicationError.HouseDomainError(err) =>
       houseHandler(err)
@@ -273,7 +242,6 @@ given Detailer[HouseApplicationError] with
         "Contacto no encontrado",
         s"No se encontro un contacto bajo el CI: $ci"
       )
-    case HouseApplicationError.ScheduleDomainError(sde) => scheduleHandler(sde)
     case HouseApplicationError.ScheduleNotFoundError(id) =>
       ProblemDetails.Single(
         "ScheduleNotFound",
@@ -355,6 +323,13 @@ given Detailer[ChildApplicationError] with
         404,
         "Niño no encontrado",
         s"""No se encontró ningun niño bajo el ID: "$id""""
+      )
+    case ChildApplicationError.PersonalInformationNotFound(ci) => 
+      ProblemDetails.Single(
+        "PersonNotFound",
+        404,
+        "Persona no encontrada",
+        s"""No se encontró ninguna persona bajo el CI: "$ci""""
       )
   }
   def detail(err: ChildApplicationError) = handler(err)

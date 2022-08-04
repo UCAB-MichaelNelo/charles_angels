@@ -12,7 +12,7 @@ Vagrant.configure("2") do |config|
 
   # Every Vagrant development environment requires a box. You can search for
   # boxes at https://vagrantcloud.com/search.
-  config.vm.box = "generic/alpine38"
+  config.vm.box = "generic/debian11"
 
   # Disable automatic box update checking. If you disable this, then
   # boxes will only be checked for updates when the user runs
@@ -29,7 +29,7 @@ Vagrant.configure("2") do |config|
   # within the machine from a port on the host machine and only allow access
   # via 127.0.0.1 to disable public access
   config.vm.network "forwarded_port", guest: 27017, host: 27017, host_ip: "127.0.0.1"
-  config.vm.network "forwarded_port", guest: 5434, host: 5434, host_ip: "127.0.0.1"
+  config.vm.network "forwarded_port", guest: 5432, host: 5432, host_ip: "127.0.0.1"
 
   # Create a private network, which allows host-only access to the machine
   # using a specific IP.
@@ -45,7 +45,7 @@ Vagrant.configure("2") do |config|
   # the path on the guest to mount the folder. And the optional third
   # argument is a set of non-required options.
   # config.vm.synced_folder "../data", "/vagrant_data"
-
+    config.vm.synced_folder ".", "/project"
   # Provider-specific configuration so you can fine-tune various
   # backing providers for Vagrant. These expose provider-specific options.
   # Example for VirtualBox:
@@ -68,19 +68,13 @@ Vagrant.configure("2") do |config|
     echo 'http://dl-cdn.alpinelinux.org/alpine/v3.6/main' >> /etc/apk/repositories
     echo 'http://dl-cdn.alpinelinux.org/alpine/v3.6/community' >> /etc/apk/repositories
 
-    apk update
-    apk add mongodb mongodb-tools postgresql
+    sudo apt-get update -y
+    sudo apt-get install -y postgresql postgresql-contrib gnupg wget
+    
+    wget -qO - https://www.mongodb.org/static/pgp/server-5.0.asc | sudo apt-key add -
+    echo "deb http://repo.mongodb.org/apt/debian buster/mongodb-org/5.0 main" | sudo tee /etc/apt/sources.list.d/mongodb-org-5.0.list
 
-    mkdir -p /data/db
-    mkdir -p /run/postgresql
-    mkdir -p /var/lib/postgresql/data
-
-    chown postgres:postgres /run/postgresql
-    chown root /data/db
-
-    chmod 0700 /var/lib/postgresql/data
-
-    rc-service postgresql start
-    rc-service mongodb start
+    sudo apt-get update -y
+    sudo apt-get install -y mongodb-org
   SHELL
 end

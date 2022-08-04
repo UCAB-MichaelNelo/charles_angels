@@ -3,9 +3,12 @@ package org.charles.angels.houses.domain
 import cats.syntax.all.*
 import cats.data.ValidatedNec
 import java.io.File
-import org.charles.angels.houses.domain.errors.HouseError
 import java.util.UUID
-import org.charles.angels.houses.domain.events.HouseEvent
+import java.time.LocalTime
+import errors.HouseError
+import events.HouseEvent
+import java.time.Period
+import java.time.LocalDate
 
 final case class House private (
     id: UUID,
@@ -21,10 +24,14 @@ final case class House private (
     currentGirlsHelped: Int,
     currentBoysHelped: Int,
     contactCI: Int,
-    scheduleId: UUID
+    scheduleStartTime: LocalTime,
+    scheduleEndTime: LocalTime
 ) { house =>
 
   // House Information
+
+  def fileExtension = 
+    img.getAbsolutePath.split("\\.").last
 
   def setImage(file: File) =
     (copy(img = file), HouseEvent.ImageUpdated(id, file))
@@ -34,6 +41,9 @@ final case class House private (
 
   def setRIF(rif: Int) =
     (copy(rif = rif), HouseEvent.RIFUpdated(id, rif))
+
+  def setAddress(address: String) =
+    copy(address = address) -> HouseEvent.AddressUpdated(id, address)
 
   def addPhone(phone: String) =
     (
@@ -74,7 +84,7 @@ final case class House private (
 
   def setMaximumAge(newMaximumAge: Int) = (
     copy(maximumAge = newMaximumAge),
-    HouseEvent.MaximumAgeUpdateed(id, newMaximumAge)
+    HouseEvent.MaximumAgeUpdated(id, newMaximumAge)
   )
 
   def setCurrentBoysHelped(newCurrentBoysHelped: Int) = (
@@ -87,13 +97,34 @@ final case class House private (
     HouseEvent.CurrentGirlsHelpedUpdated(id, newCurrentGirlsHelped)
   )
 
+  def setScheduleStartTime(startTime: LocalTime) =
+    House.Schedule(startTime, house.scheduleEndTime)
+      .map { (startTime, _) => 
+        copy(scheduleStartTime = startTime) -> 
+        HouseEvent.ScheduleStartTimeUpdated(id, startTime) 
+      }
+
+  def setScheduleEndTime(endTime: LocalTime) =
+    House.Schedule(house.scheduleStartTime, endTime)
+      .map { (_, endTime) => 
+        copy(scheduleEndTime = endTime) -> 
+        HouseEvent.ScheduleEndTimeUpdated(id, endTime) 
+      }
+
+  def validateAgeBounds(birthdate: LocalDate) =
+    val period = Period.between(birthdate, LocalDate.now)
+    val age = period.getYears
+
+    age >= minimumAge && age <= maximumAge
+
+  def canHaveNewBeneficiaries =
+    currentShares < maxShares
+
   // Contact
 
-  def setContact(ci: Int) = copy(contactCI = ci)
+  def setContact(ci: Int) = copy(contactCI = ci) -> HouseEvent.HouseContactCIUpdated(id, ci)
 
   // Schedule
-
-  def setSchedule(id: UUID) = copy(scheduleId = id)
 
   def delete = HouseEvent.HouseDeleted(id)
 }
@@ -143,7 +174,7 @@ object House:
     def apply(address: String) =
       (if (!address.isBlank) address.validNec
        else HouseError.EmptyAddress.invalidNec) *>
-        (if (address.length <= 255) address.validNec
+        (if (address.length <= MAX_SIZE) address.validNec
          else HouseError.AddressTooLoong(address).invalidNec)
 
   object MaxShares:
@@ -161,6 +192,15 @@ object House:
              .MinimumAgeIsGreaterThanMaximumAge(minAge, maxAge)
              .invalidNec)
 
+  object Schedule:
+    def apply(startTime: LocalTime, endTime: LocalTime): ValidatedNec[HouseError, (LocalTime, LocalTime)] =
+      (if (startTime.isAfter(endTime)) HouseError.ScheduleStartTimeIsAfterEndTime.invalidNec
+      else startTime.validNec) *>
+        (if (endTime.isBefore(startTime)) HouseError.ScheduleEndTimeIsBeforeStartTime.invalidNec
+        else endTime.validNec) *>
+          (if (startTime.compareTo(endTime) != 0) (startTime, endTime).validNec
+          else HouseError.ScheduleStartTimeAndEndTimeAreEqual.invalidNec)
+
   def apply(
       img: File,
       name: String,
@@ -168,13 +208,14 @@ object House:
       phones: Vector[String],
       address: String,
       contactCI: Int,
-      scheduleId: UUID,
       maxShares: Int,
       currentShares: Int,
       minimumAge: Int,
       maximumAge: Int,
       currentGirlsHelped: Int,
-      currentBoysHelped: Int
+      currentBoysHelped: Int,
+      scheduleStartTime: LocalTime,
+      scheduleEndTime: LocalTime
   ) = (
     Image(img),
     Name(name),
@@ -182,9 +223,11 @@ object House:
     Phones(phones),
     Address(address),
     MaxShares(maxShares),
-    AgeLimits(minimumAge, maximumAge)
-  ).mapN { (vimg, vname, vrif, vphones, vaddress, vmaxShares, vAgeLimit) =>
+    AgeLimits(minimumAge, maximumAge),
+    Schedule(scheduleStartTime, scheduleEndTime)
+  ).mapN { (vimg, vname, vrif, vphones, vaddress, vmaxShares, vAgeLimit, vScheduleTime) =>
     val (vminAge, vmaxAge) = vAgeLimit
+    val (vScheduleStartTime, vScheduleEndTime) = vScheduleTime
     new House(
       UUID.randomUUID,
       vimg,
@@ -199,7 +242,8 @@ object House:
       currentGirlsHelped,
       currentBoysHelped,
       contactCI,
-      scheduleId
+      vScheduleStartTime,
+      vScheduleEndTime
     )
   }.map(h =>
     (
@@ -218,7 +262,8 @@ object House:
         h.currentGirlsHelped,
         h.currentBoysHelped,
         h.contactCI,
-        h.scheduleId
+        h.scheduleStartTime,
+        h.scheduleEndTime
       )
     )
   )
@@ -231,13 +276,14 @@ object House:
       phones: Vector[String],
       address: String,
       contactCI: Int,
-      scheduleId: UUID,
       maxShares: Int,
       currentShares: Int,
       minimumAge: Int,
       maximumAge: Int,
       currentGirlsHelped: Int,
-      currentBoysHelped: Int
+      currentBoysHelped: Int,
+      scheduleStartTime: LocalTime,
+      scheduleEndTime: LocalTime
   ) = new House(
     id,
     img,
@@ -252,5 +298,6 @@ object House:
     currentGirlsHelped,
     currentBoysHelped,
     contactCI,
-    scheduleId
+    scheduleStartTime,
+    scheduleEndTime
   )

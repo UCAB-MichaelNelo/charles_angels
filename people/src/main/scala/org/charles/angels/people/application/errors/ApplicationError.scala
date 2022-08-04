@@ -10,6 +10,7 @@ enum ApplicationError {
   case DomainDressError(error: DressError)
   case DomainPersonalInformationError(error: PersonalInformationError)
   case ChildNotFound(id: UUID)
+  case PersonalInformationNotFound(ci: Int)
 }
 
 given Inject[DressError, ApplicationError] with
