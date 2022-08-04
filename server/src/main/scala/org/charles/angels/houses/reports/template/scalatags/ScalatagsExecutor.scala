@@ -34,7 +34,7 @@ import java.io.PipedInputStream
 import org.charles.angels.houses.reports.models.FoodAmountNeeded
 import java.time.Period
 
-class ScalatagsExecutor[F[_]: Async] extends (TemplateReportAction ~> F) {
+class ScalatagsExecutor[F[_]: Async](wkhtmltopdfPath: String) extends (TemplateReportAction ~> F) {
     object Styling extends CascadingStyleSheet {
         initStyleSheet()
 
@@ -157,7 +157,7 @@ class ScalatagsExecutor[F[_]: Async] extends (TemplateReportAction ~> F) {
             import prox.JVMProcessRunner
 
             val runner = new JVMProcessRunner
-            val process = Process("wkhtmltopdf", List("--enable-local-file-access", "--title", name, "-", "-"))
+            val process = Process(wkhtmltopdfPath, List("--enable-local-file-access", "--title", name, "-", "-"))
 
             for 
                 queue <- Queue.unbounded[G, Option[Byte]]
@@ -386,7 +386,7 @@ class ScalatagsExecutor[F[_]: Async] extends (TemplateReportAction ~> F) {
     }
 }
 
-class Scalatags;
+case class Scalatags(wkhtmltopdfPath: String)
 
 given [F[_]: Async]: Make[F, Scalatags] with
-    def make(_unused: Scalatags): Resource[F, TemplateReportAction ~> F] = ScalatagsExecutor[F].pure[Resource[F, _]]
+    def make(maker: Scalatags): Resource[F, TemplateReportAction ~> F] = ScalatagsExecutor[F](maker.wkhtmltopdfPath).pure[Resource[F, _]]

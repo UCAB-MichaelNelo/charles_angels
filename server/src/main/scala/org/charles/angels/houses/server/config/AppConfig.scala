@@ -12,6 +12,10 @@ final case class FsConfig(
     baseDir: String
 )
 
+final case class ReportConfig(
+    wkhtmltopdfPath: String
+)
+
 final case class HttpConfig(
     port: Int
 )
@@ -25,6 +29,7 @@ final case class AuthenticationConfig(
 final case class AppConfig(
     database: DatabaseConfig,
     fs: FsConfig,
+    report: ReportConfig,
     http: HttpConfig,
     authentication: AuthenticationConfig
 )

@@ -15,13 +15,14 @@ object CirisLoader {
         env("DATABASE_PARALLELISM_LEVEL").or(prop("database.parallelism-level")).as[Int],
 
         prop("fs.base-dir").as[String],
+        prop("report.wkhtmltopdf-path").as[String],
 
         env("PORT").or(prop("http.port")).as[Int],
 
         env("AUTH_USERNAME").or(prop("auth.username")).as[String],
         env("AUTH_PASSWORD").or(prop("auth.password")).as[String],
         env("AUTH_SECRET_KEY").or(prop("auth.secret-key")).as[String]
-    ).parMapN((dbDriver, dbUrl, dbUser, dbPassword, dbPl, storageBaseDir, port, authUser, authPassword, authSecret) => 
+    ).parMapN((dbDriver, dbUrl, dbUser, dbPassword, dbPl, storageBaseDir, wkhtmltopdfPath, port, authUser, authPassword, authSecret) => 
         AppConfig(
             DatabaseConfig(
                 dbDriver,
@@ -31,6 +32,7 @@ object CirisLoader {
                 dbPl
             ),
             FsConfig(storageBaseDir),
+            ReportConfig(wkhtmltopdfPath),
             HttpConfig(port),
             AuthenticationConfig(authUser, authPassword, authSecret)
         )
