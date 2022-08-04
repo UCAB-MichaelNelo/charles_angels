@@ -34,7 +34,7 @@ import java.io.PipedInputStream
 import org.charles.angels.houses.reports.models.FoodAmountNeeded
 import java.time.Period
 
-class ScalatagsExecutor[F[_]: Async](wkhtmltopdfPath: String) extends (TemplateReportAction ~> F) {
+class ScalatagsExecutor[F[_]: Async](wkhtmltopdfPath: String, resourcesBasePath: String) extends (TemplateReportAction ~> F) {
     object Styling extends CascadingStyleSheet {
         initStyleSheet()
 
@@ -81,16 +81,17 @@ class ScalatagsExecutor[F[_]: Async](wkhtmltopdfPath: String) extends (TemplateR
     private def layout(reportName: String, reportScope: String)(body: TextTags.TypedTag[String]*) = 
         Html.html(
             Html.head(
+                Html.base(Attr.href := resourcesBasePath),
                 Html.meta(Attr.charset := "utf-8"),
                 Html.meta(Attr.name := "viewport", Attr.content := "width=device-width, initial-scale=1"),
                 Html.link(
                     Attr.rel := "stylesheet", 
-                    Attr.href := getClass.getResource("/public/css/mui.min.css").toString,
+                    Attr.href := "/css/mui.min.css",
                     Attr.`type` := "text/css"
                 ),
                 Html2.style(Styling.styleSheetText),
                 Html2.title(s"$reportName ($reportScope)"),
-                Html.script(Attr.src := getClass.getResource("/public/js/mui.min.js").toString)
+                Html.script(Attr.src := "/js/mui.min.js")
             ),
             Html.body(
                 Html.div(Attr.`class` := "mui-container-fluid", TagStyling.padding := "6em")(
@@ -101,7 +102,7 @@ class ScalatagsExecutor[F[_]: Async](wkhtmltopdfPath: String) extends (TemplateR
                         TagStyling.minHeight := "150px"
                     )(
                         Html.img(
-                            Attr.src := getClass.getResource("/public/charles_angels_logo.jpeg").toString, 
+                            Attr.src := "/img/charles_angels_logo.jpeg", 
                             TagStyling.width := "135px",
                             TagStyling.flexShrink := "0"
                         ),
@@ -386,7 +387,7 @@ class ScalatagsExecutor[F[_]: Async](wkhtmltopdfPath: String) extends (TemplateR
     }
 }
 
-case class Scalatags(wkhtmltopdfPath: String)
+case class Scalatags(wkhtmltopdfPath: String, resourcesBasePath: String)
 
 given [F[_]: Async]: Make[F, Scalatags] with
-    def make(maker: Scalatags): Resource[F, TemplateReportAction ~> F] = ScalatagsExecutor[F](maker.wkhtmltopdfPath).pure[Resource[F, _]]
+    def make(maker: Scalatags): Resource[F, TemplateReportAction ~> F] = ScalatagsExecutor[F](maker.wkhtmltopdfPath, maker.resourcesBasePath).pure[Resource[F, _]]

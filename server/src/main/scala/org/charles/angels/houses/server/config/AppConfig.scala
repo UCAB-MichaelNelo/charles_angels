@@ -13,7 +13,8 @@ final case class FsConfig(
 )
 
 final case class ReportConfig(
-    wkhtmltopdfPath: String
+    wkhtmltopdfPath: String,
+    resourcesBasePath: String
 )
 
 final case class HttpConfig(

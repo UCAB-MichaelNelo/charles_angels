@@ -54,7 +54,7 @@ object Main extends IOApp {
     )
     fsInterpreter <- FilesystemExecutor[IO](JVM(config.fs.baseDir))
     (notificationStream, notificationInterpreter) <- NotificationExecutor[IO](Fs2())
-    reportInterpreter <- ReportExecutor[IO](ExistingSqlTransactor(xa), Scalatags(config.report.wkhtmltopdfPath))
+    reportInterpreter <- ReportExecutor[IO](ExistingSqlTransactor(xa), Scalatags(config.report.wkhtmltopdfPath, config.report.resourcesBasePath))
     authIntepreter <- AuthExecutor[IO](Environment(config.authentication.user, config.authentication.password, config.authentication.rawKey))
     unscheduledInterpreter =
       reportInterpreter or (notificationInterpreter or (authIntepreter or (fsInterpreter or (logInterpreter or (dbInterpreter)))))

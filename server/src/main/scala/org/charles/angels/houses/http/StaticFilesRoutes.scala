@@ -29,6 +29,8 @@ class StaticFilesRoutes[F[_]: Async: Parallel: Concurrent: Executor]
       static(s"css/$path", req)
     case req @ GET -> "js" /: path =>
       static(s"js/$path", req)
+    case req @ GET -> "img" /: path =>
+      static(s"img/$path", req)
   }
 
 }
